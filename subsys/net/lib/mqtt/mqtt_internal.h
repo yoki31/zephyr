@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <net/mqtt.h>
+#include <zephyr/net/mqtt.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,14 +115,14 @@ extern "C" {
 		if ((param) == NULL) { \
 			return -EINVAL; \
 		} \
-	} while (0)
+	} while (false)
 
 #define NULL_PARAM_CHECK_VOID(param) \
 	do { \
 		if ((param) == NULL) { \
 			return; \
 		} \
-	} while (0)
+	} while (false)
 
 /** Buffer context to iterate over buffer. */
 struct buf_ctx {

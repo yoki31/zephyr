@@ -7,11 +7,15 @@
 #ifndef __WRAPPER_H__
 #define __WRAPPER_H__
 
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <cmsis_os2.h>
 
+#ifndef TRUE
 #define TRUE    1
+#endif
+#ifndef FALSE
 #define FALSE   0
+#endif
 
 struct cv2_thread {
 	sys_dnode_t node;

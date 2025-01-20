@@ -5,18 +5,18 @@
  */
 
 #include <stdbool.h>
-#include <fcntl.h>
+#include <zephyr/posix/fcntl.h>
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_sock_mgmt, CONFIG_NET_SOCKETS_LOG_LEVEL);
 
-#include <kernel.h>
-#include <sys/util.h>
-#include <net/socket.h>
-#include <syscall_handler.h>
-#include <sys/fdtable.h>
-#include <net/socket_net_mgmt.h>
-#include <net/ethernet_mgmt.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/net/socket.h>
+#include <zephyr/internal/syscall_handler.h>
+#include <zephyr/sys/fdtable.h>
+#include <zephyr/net/socket_net_mgmt.h>
+#include <zephyr/net/ethernet_mgmt.h>
 
 #include "sockets_internal.h"
 #include "net_private.h"
@@ -69,7 +69,7 @@ int znet_mgmt_socket(int family, int type, int proto)
 		return -1;
 	}
 
-	fd = z_reserve_fd();
+	fd = zvfs_reserve_fd();
 	if (fd < 0) {
 		errno = ENOSPC;
 		return -1;
@@ -80,8 +80,8 @@ int znet_mgmt_socket(int family, int type, int proto)
 	mgmt->alloc_timeout = MSG_ALLOC_TIMEOUT;
 	mgmt->wait_timeout = K_FOREVER;
 
-	z_finalize_fd(fd, mgmt,
-		     (const struct fd_op_vtable *)&net_mgmt_sock_fd_op_vtable);
+	zvfs_finalize_typed_fd(fd, mgmt, (const struct fd_op_vtable *)&net_mgmt_sock_fd_op_vtable,
+			    ZVFS_MODE_IFSOCK);
 
 	return fd;
 }
@@ -205,8 +205,12 @@ again:
 
 	if (info) {
 		ret = info_len + sizeof(hdr);
-		ret = MIN(max_len, ret);
-		memcpy(&copy_to[sizeof(hdr)], info, ret);
+		if (ret > max_len) {
+			errno = EMSGSIZE;
+			return -1;
+		}
+
+		memcpy(&copy_to[sizeof(hdr)], info, info_len);
 	} else {
 		ret = 0;
 	}
@@ -305,7 +309,8 @@ static ssize_t net_mgmt_sock_write(void *obj, const void *buffer,
 static int net_mgmt_sock_ioctl(void *obj, unsigned int request,
 			       va_list args)
 {
-	return 0;
+	errno = EOPNOTSUPP;
+	return -1;
 }
 
 static int net_mgmt_sock_bind(void *obj, const struct sockaddr *addr,

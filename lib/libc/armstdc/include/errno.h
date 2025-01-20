@@ -35,11 +35,10 @@
  *        'C Library ABI for the Arm® Architecture, 2021Q1'
  *
  * @defgroup system_errno Error numbers
- * @ingroup c_std_lib
  * @{
  */
 
-#include <sys/errno_private.h>
+#include <zephyr/sys/errno_private.h>
 
 #ifdef __cplusplus
 extern "C" {

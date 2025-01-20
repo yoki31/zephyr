@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <kernel.h>
-#include <device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
 #include <string.h>
-#include <drivers/flash.h>
-#include <init.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/init.h>
 #include <soc.h>
 
 #include "flash_stm32.h"
@@ -76,7 +76,7 @@ static int write_byte(const struct device *dev, off_t offset, uint8_t val)
 	/* flush the register write */
 	tmp = regs->CR;
 
-	*((uint8_t *) offset + CONFIG_FLASH_BASE_ADDRESS) = val;
+	*((uint8_t *) offset + FLASH_STM32_BASE_ADDRESS) = val;
 
 	/* Wait until the BSY bit is cleared */
 	rc = flash_stm32_wait_flash_idle(dev);

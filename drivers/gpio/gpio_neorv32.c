@@ -6,14 +6,19 @@
 
 #define DT_DRV_COMPAT neorv32_gpio
 
-#include <device.h>
-#include <drivers/gpio.h>
-#include <drivers/syscon.h>
-#include <sys/sys_io.h>
-#include <logging/log.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/syscon.h>
+#include <zephyr/irq.h>
+#include <zephyr/sys/sys_io.h>
+#include <zephyr/logging/log.h>
+
+#include <soc.h>
+
 LOG_MODULE_REGISTER(gpio_neorv32, CONFIG_GPIO_LOG_LEVEL);
 
-#include "gpio_utils.h"
+#include <zephyr/drivers/gpio/gpio_utils.h>
 
 /* Maximum number of GPIOs supported */
 #define MAX_GPIOS 32
@@ -146,19 +151,6 @@ static int neorv32_gpio_port_toggle_bits(const struct device *dev,
 	return 0;
 }
 
-static int neorv32_gpio_pin_interrupt_configure(const struct device *dev,
-						 gpio_pin_t pin,
-						 enum gpio_int_mode mode,
-						 enum gpio_int_trig trig)
-{
-	ARG_UNUSED(dev);
-	ARG_UNUSED(pin);
-	ARG_UNUSED(mode);
-	ARG_UNUSED(trig);
-
-	return -ENOTSUP;
-}
-
 static int neorv32_gpio_manage_callback(const struct device *dev,
 					struct gpio_callback *cb,
 					bool set)
@@ -203,14 +195,13 @@ static int neorv32_gpio_init(const struct device *dev)
 	return 0;
 }
 
-static const struct gpio_driver_api neorv32_gpio_driver_api = {
+static DEVICE_API(gpio, neorv32_gpio_driver_api) = {
 	.pin_configure = neorv32_gpio_pin_configure,
 	.port_get_raw = neorv32_gpio_port_get_raw,
 	.port_set_masked_raw = neorv32_gpio_port_set_masked_raw,
 	.port_set_bits_raw = neorv32_gpio_port_set_bits_raw,
 	.port_clear_bits_raw = neorv32_gpio_port_clear_bits_raw,
 	.port_toggle_bits = neorv32_gpio_port_toggle_bits,
-	.pin_interrupt_configure = neorv32_gpio_pin_interrupt_configure,
 	.manage_callback = neorv32_gpio_manage_callback,
 	.get_pending_int = neorv32_gpio_get_pending_int,
 };
@@ -230,11 +221,11 @@ static const struct gpio_driver_api neorv32_gpio_driver_api = {
 	};								\
 									\
 	DEVICE_DT_INST_DEFINE(n,					\
-			&neorv32_gpio_init,				\
+			neorv32_gpio_init,				\
 			NULL,						\
 			&neorv32_gpio_##n##_data,			\
 			&neorv32_gpio_##n##_config,			\
-			POST_KERNEL,					\
+			PRE_KERNEL_2,					\
 			CONFIG_GPIO_INIT_PRIORITY,			\
 			&neorv32_gpio_driver_api);
 

@@ -4,16 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <device.h>
-
-void main(void)
+int main(void)
 {
+	return 0;
 }
 
-#if DT_NODE_EXISTS(DT_INST(0, vnd_gpio))
-/* Fake GPIO device, needed for building drivers that use DEVICE_DT_GET()
- * to access GPIO controllers.
- */
-DEVICE_DT_DEFINE(DT_INST(0, vnd_gpio), NULL, NULL, NULL, NULL,
-		 POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, NULL);
-#endif
+#ifdef CONFIG_CONNECTIVITY_WIFI_MGMT_APPLICATION
+
+#include <zephyr/net/conn_mgr_connectivity_impl.h>
+#include <zephyr/net/conn_mgr/connectivity_wifi_mgmt.h>
+
+/* Bind L2 connectity APIs. */
+static struct conn_mgr_conn_api conn_api = { 0 };
+
+CONN_MGR_CONN_DEFINE(CONNECTIVITY_WIFI_MGMT, &conn_api);
+
+#endif /* CONFIG_CONNECTIVITY_WIFI_MGMT_APPLICATION */

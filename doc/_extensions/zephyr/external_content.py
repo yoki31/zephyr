@@ -14,7 +14,7 @@ build. Note that the copy is *smart*, that is, only updated files are actually
 copied. Therefore, incremental builds detect changes correctly and behave as
 expected.
 
-Paths for external content ingluded via e.g. figure, literalinclude, etc.
+Paths for external content included via e.g. figure, literalinclude, etc.
 are adjusted as needed.
 
 Configuration options
@@ -32,14 +32,13 @@ Configuration options
 
 import filecmp
 import os
-from pathlib import Path
 import re
 import shutil
 import tempfile
-from typing import Dict, Any, List, Optional
+from pathlib import Path
+from typing import Any
 
 from sphinx.application import Sphinx
-
 
 __version__ = "0.1.0"
 
@@ -51,9 +50,9 @@ DEFAULT_DIRECTIVES = ("figure", "image", "include", "literalinclude")
 def adjust_includes(
     fname: Path,
     basepath: Path,
-    directives: List[str],
+    directives: list[str],
     encoding: str,
-    dstpath: Optional[Path] = None,
+    dstpath: Path | None = None,
 ) -> None:
     """Adjust included content paths.
 
@@ -93,7 +92,7 @@ def adjust_includes(
 
 
 def sync_contents(app: Sphinx) -> None:
-    """Synhronize external contents.
+    """Synchronize external contents.
 
     Args:
         app: Sphinx application instance.
@@ -162,7 +161,7 @@ def sync_contents(app: Sphinx) -> None:
         file.unlink()
 
 
-def setup(app: Sphinx) -> Dict[str, Any]:
+def setup(app: Sphinx) -> dict[str, Any]:
     app.add_config_value("external_content_contents", [], "env")
     app.add_config_value("external_content_directives", DEFAULT_DIRECTIVES, "env")
     app.add_config_value("external_content_keep", [], "")

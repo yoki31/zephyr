@@ -13,10 +13,11 @@
 #ifndef __ROUTE_H
 #define __ROUTE_H
 
-#include <kernel.h>
-#include <sys/slist.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/slist.h>
 
-#include <net/net_ip.h>
+#include <zephyr/net/net_ip.h>
+#include <zephyr/net/net_timeout.h>
 
 #include "nbr.h"
 
@@ -54,12 +55,26 @@ struct net_route_entry {
 	/** Network interface for the route. */
 	struct net_if *iface;
 
+	/** Route lifetime timer. */
+	struct net_timeout lifetime;
+
 	/** IPv6 address/prefix of the route. */
 	struct in6_addr addr;
 
 	/** IPv6 address/prefix length. */
 	uint8_t prefix_len;
+
+	uint8_t preference : 2;
+
+	/** Is the route valid forever */
+	uint8_t is_infinite : 1;
 };
+
+/* Route preference values, as defined in RFC 4191 */
+#define NET_ROUTE_PREFERENCE_HIGH     0x01
+#define NET_ROUTE_PREFERENCE_MEDIUM   0x00
+#define NET_ROUTE_PREFERENCE_LOW      0x03 /* -1 if treated as 2 bit signed int */
+#define NET_ROUTE_PREFERENCE_RESERVED 0x02
 
 /**
  * @brief Lookup route to a given destination.
@@ -91,13 +106,17 @@ static inline struct net_route_entry *net_route_lookup(struct net_if *iface,
  * @param addr IPv6 address.
  * @param prefix_len Length of the IPv6 address/prefix.
  * @param nexthop IPv6 address of the Next hop device.
+ * @param lifetime Route lifetime in seconds.
+ * @param preference Route preference.
  *
  * @return Return created route entry, NULL if could not be created.
  */
 struct net_route_entry *net_route_add(struct net_if *iface,
 				      struct in6_addr *addr,
 				      uint8_t prefix_len,
-				      struct in6_addr *nexthop);
+				      struct in6_addr *nexthop,
+				      uint32_t lifetime,
+				      uint8_t preference);
 
 /**
  * @brief Delete a route from routing table.
@@ -120,20 +139,14 @@ int net_route_del_by_nexthop(struct net_if *iface,
 			     struct in6_addr *nexthop);
 
 /**
- * @brief Delete a route from routing table by nexthop if the routing engine
- * specific data matches.
+ * @brief Update the route lifetime.
  *
- * @detail The routing engine specific data could be the RPL data.
+ * @param route Pointer to routing entry.
+ * @param lifetime Route lifetime in seconds.
  *
- * @param iface Network interface to use.
- * @param nexthop IPv6 address of the nexthop device.
- * @param data Routing engine specific data.
- *
- * @return number of routes deleted, <0 if error
+ * @return 0 if ok, <0 if error
  */
-int net_route_del_by_nexthop_data(struct net_if *iface,
-				  struct in6_addr *nexthop,
-				  void *data);
+void net_route_update_lifetime(struct net_route_entry *route, uint32_t lifetime);
 
 /**
  * @brief Get nexthop IPv6 address tied to this route.
@@ -170,12 +183,13 @@ typedef void (*net_route_cb_t)(struct net_route_entry *entry,
  */
 int net_route_foreach(net_route_cb_t cb, void *user_data);
 
+#if defined(CONFIG_NET_ROUTE_MCAST)
 /**
  * @brief Multicast route entry.
  */
 struct net_route_entry_mcast {
-	/** Network interface for the route. */
-	struct net_if *iface;
+	/** Network interfaces for the route. */
+	struct net_if *ifaces[CONFIG_NET_MCAST_ROUTE_MAX_IFACES];
 
 	/** Extra routing engine specific data */
 	void *data;
@@ -192,6 +206,9 @@ struct net_route_entry_mcast {
 	/** IPv6 multicast group prefix length. */
 	uint8_t prefix_len;
 };
+#else
+struct net_route_entry_mcast;
+#endif
 
 typedef void (*net_route_mcast_cb_t)(struct net_route_entry_mcast *entry,
 				     void *user_data);
@@ -207,7 +224,7 @@ typedef void (*net_route_mcast_cb_t)(struct net_route_entry_mcast *entry,
  * value in case of an error.
  */
 int net_route_mcast_forward_packet(struct net_pkt *pkt,
-				   const struct net_ipv6_hdr *hdr);
+				   struct net_ipv6_hdr *hdr);
 
 /**
  * @brief Go through all the multicast routing entries and call callback
@@ -254,6 +271,27 @@ bool net_route_mcast_del(struct net_route_entry_mcast *route);
  */
 struct net_route_entry_mcast *
 net_route_mcast_lookup(struct in6_addr *group);
+
+/**
+ * @brief Add an interface to multicast routing entry.
+ *
+ * @param entry Multicast routing entry.
+ * @param iface Network interface to be added.
+ *
+ * @return True if the interface was added or found on the
+ *         list, false otherwise.
+ */
+bool net_route_mcast_iface_add(struct net_route_entry_mcast *entry, struct net_if *iface);
+
+/**
+ * @brief Delete an interface from multicast routing entry.
+ *
+ * @param entry Multicast routing entry.
+ * @param iface Network interface to be deleted.
+ *
+ * @return True if entry was deleted, false otherwise.
+ */
+bool net_route_mcast_iface_del(struct net_route_entry_mcast *entry, struct net_if *iface);
 
 /**
  * @brief Return a route to destination via some intermediate host.

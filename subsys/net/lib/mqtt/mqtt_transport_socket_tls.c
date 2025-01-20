@@ -9,12 +9,12 @@
  * @brief Internal functions to handle transport over TLS socket.
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_mqtt_sock_tls, CONFIG_MQTT_LOG_LEVEL);
 
 #include <errno.h>
-#include <net/socket.h>
-#include <net/mqtt.h>
+#include <zephyr/net/socket.h>
+#include <zephyr/net/mqtt.h>
 
 #include "mqtt_os.h"
 
@@ -30,7 +30,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 		return -errno;
 	}
 
-	MQTT_TRC("Created socket %d", client->transport.tls.sock);
+	NET_DBG("Created socket %d", client->transport.tls.sock);
 
 #if defined(CONFIG_SOCKS)
 	if (client->transport.proxy.addrlen != 0) {
@@ -39,7 +39,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 				 &client->transport.proxy.addr,
 				 client->transport.proxy.addrlen);
 		if (ret < 0) {
-			return -errno;
+			goto error;
 		}
 	}
 #endif
@@ -69,10 +69,23 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 		}
 	}
 
+#if defined(CONFIG_MQTT_LIB_TLS_USE_ALPN)
+	if (tls_config->alpn_protocol_name_list != NULL &&
+		tls_config->alpn_protocol_name_count > 0) {
+		ret = zsock_setsockopt(client->transport.tls.sock, SOL_TLS,
+				TLS_ALPN_LIST, tls_config->alpn_protocol_name_list,
+				sizeof(const char *) * tls_config->alpn_protocol_name_count);
+		if (ret < 0) {
+			goto error;
+		}
+	}
+
+#endif
+
 	if (tls_config->hostname) {
 		ret = zsock_setsockopt(client->transport.tls.sock, SOL_TLS,
 				       TLS_HOSTNAME, tls_config->hostname,
-				       strlen(tls_config->hostname));
+				       strlen(tls_config->hostname) + 1);
 		if (ret < 0) {
 			goto error;
 		}
@@ -99,7 +112,7 @@ int mqtt_client_tls_connect(struct mqtt_client *client)
 		goto error;
 	}
 
-	MQTT_TRC("Connect completed");
+	NET_DBG("Connect completed");
 	return 0;
 
 error:
@@ -187,7 +200,7 @@ int mqtt_client_tls_disconnect(struct mqtt_client *client)
 {
 	int ret;
 
-	MQTT_TRC("Closing socket %d", client->transport.tls.sock);
+	NET_INFO("Closing socket %d", client->transport.tls.sock);
 	ret = zsock_close(client->transport.tls.sock);
 	if (ret < 0) {
 		return -errno;

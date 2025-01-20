@@ -4,15 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_stats_sample, LOG_LEVEL_DBG);
 
-#include <zephyr.h>
+#include <zephyr/kernel.h>
 #include <errno.h>
 
-#include <net/net_core.h>
-#include <net/net_if.h>
-#include <net/net_stats.h>
+#include <zephyr/net/net_core.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_stats.h>
 
 static struct k_work_delayable stats_timer;
 
@@ -43,6 +43,12 @@ static void print_stats(struct net_if *iface, struct net_stats *data)
 	       GET_STAT(iface, ipv6_nd.sent),
 	       GET_STAT(iface, ipv6_nd.drop));
 #endif /* CONFIG_NET_IPV6_ND */
+#if defined(CONFIG_NET_IPV6_PMTU)
+	printk("IPv6 PMTU recv %d\tsent\t%d\tdrop\t%d\n",
+	       GET_STAT(iface, ipv6_pmtu.recv),
+	       GET_STAT(iface, ipv6_pmtu.sent),
+	       GET_STAT(iface, ipv6_pmtu.drop));
+#endif /* CONFIG_NET_IPV6_PMTU */
 #if defined(CONFIG_NET_STATISTICS_MLD)
 	printk("IPv6 MLD recv  %d\tsent\t%d\tdrop\t%d\n",
 	       GET_STAT(iface, ipv6_mld.recv),
@@ -67,6 +73,13 @@ static void print_stats(struct net_if *iface, struct net_stats *data)
 	       GET_STAT(iface, ip_errors.fragerr),
 	       GET_STAT(iface, ip_errors.chkerr),
 	       GET_STAT(iface, ip_errors.protoerr));
+
+#if defined(CONFIG_NET_IPV4_PMTU)
+	printk("IPv4 PMTU recv %d\tsent\t%d\tdrop\t%d\n",
+	       GET_STAT(iface, ipv4_pmtu.recv),
+	       GET_STAT(iface, ipv4_pmtu.sent),
+	       GET_STAT(iface, ipv4_pmtu.drop));
+#endif /* CONFIG_NET_IPV4_PMTU */
 
 	printk("ICMP recv      %d\tsent\t%d\tdrop\t%d\n",
 	       GET_STAT(iface, icmp.recv),
@@ -186,9 +199,10 @@ static void init_app(void)
 	k_work_reschedule(&stats_timer, K_SECONDS(CONFIG_SAMPLE_PERIOD));
 }
 
-void main(void)
+int main(void)
 {
 	/* Register a timer that will collect statistics after every n seconds.
 	 */
 	init_app();
+	return 0;
 }

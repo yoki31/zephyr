@@ -6,16 +6,17 @@
  */
 
 #include <inttypes.h>
-#include <zephyr.h>
+#include <zephyr/kernel.h>
 #include <string.h>
-#include <sys/printk.h>
-#include <logging/log.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/shell/shell.h>
 
-LOG_MODULE_REGISTER(hello_world, 4);
+LOG_MODULE_REGISTER(hello_world, LOG_LEVEL_DBG);
 
 static const char *hexdump_msg = "HEXDUMP! HEXDUMP@ HEXDUMP#";
 
-void main(void)
+int main(void)
 {
 	int8_t i8 = 1;
 	uint8_t u8 = 2;
@@ -27,6 +28,7 @@ void main(void)
 	uint64_t u64 = 65;
 	char c = '!';
 	char *s = "static str";
+	char *s1 = "c str";
 	char vs0[32];
 	char vs1[32];
 	void *p = s;
@@ -49,7 +51,7 @@ void main(void)
 	snprintk(&vs1[0], sizeof(vs1), "%s", "another dynamic str");
 
 	LOG_DBG("char %c", c);
-	LOG_DBG("s str %s", s);
+	LOG_DBG("s str %s %s", s, s1);
 	LOG_DBG("d str %s", vs0);
 	LOG_DBG("mixed str %s %s %s %s %s %s %s", vs0, "---", vs0, "---", vs1, "---", vs1);
 	LOG_DBG("mixed c/s %c %s %s %s %c", c, s, vs0, s, c);
@@ -64,9 +66,23 @@ void main(void)
 
 	LOG_DBG("float %f, double %f", (double)f, d);
 #ifdef CONFIG_CBPRINTF_PACKAGE_LONGDOUBLE
-	long double ld = 70.71;
+	long double ld = 70.71L;
 
 	LOG_DBG("long double %Lf", ld);
 #endif
 #endif
+	return 0;
 }
+
+static int rt_demo_cmd(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(sh);
+	LOG_ERR("demo %s", argc > 1 ? argv[1] : "");
+	LOG_WRN("demo %s", argc > 1 ? argv[1] : "");
+	LOG_INF("demo %s", argc > 1 ? argv[1] : "");
+	LOG_DBG("demo %s", argc > 1 ? argv[1] : "");
+
+	return 0;
+}
+
+SHELL_CMD_REGISTER(log_rt_demo, NULL, "Command can be used to test runtime filtering", rt_demo_cmd);

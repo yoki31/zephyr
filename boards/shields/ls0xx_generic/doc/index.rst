@@ -18,7 +18,7 @@ high during driver initialization. Display blanking apis can be used
 to control it.
 
 Sharp memory displays require toggling the VCOM signal periodically
-to prevent a DC bias ocurring in the panel as mentioned in the `appnote`_
+to prevent a DC bias occurring in the panel as mentioned in the `appnote`_
 and `datasheet`_. The DC bias can damage the LCD and reduce the life.
 This signal must be supplied from either serial input (sw) or an external
 signal on the EXTCOMIN pin.
@@ -88,11 +88,11 @@ for Arduino connectors and defines node aliases for SPI and GPIO interfaces
 Programming
 ***********
 
-Set ``-DSHIELD=ls013b7dh03`` when you invoke ``west build``. For example:
+Set ``--shield ls013b7dh03`` when you invoke ``west build``. For example:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/subsys/display/lvgl
-   :board: nrf52840dk_nrf52840
+   :board: nrf52840dk/nrf52840
    :shield: ls013b7dh03
    :goals: build
 

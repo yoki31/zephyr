@@ -13,10 +13,13 @@
  * This implementation works only when sw_isr_table is enabled in zephyr
  */
 
-#include <device.h>
-#include <irq_nextlevel.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree/interrupt_controller.h>
+#include <zephyr/irq_nextlevel.h>
+#include <zephyr/sw_isr_table.h>
 #include "intc_dw.h"
 #include <soc.h>
+#include <zephyr/irq.h>
 
 static ALWAYS_INLINE void dw_ictl_dispatch_child_isrs(uint32_t intr_status,
 						      uint32_t isr_base_offset)
@@ -52,11 +55,11 @@ static void dw_ictl_isr(const struct device *dev)
 	volatile struct dw_ictl_registers * const regs =
 			(struct dw_ictl_registers *)config->base_addr;
 
-	dw_ictl_dispatch_child_isrs(regs->irq_maskstatus_l,
+	dw_ictl_dispatch_child_isrs(regs->irq_finalstatus_l,
 				    config->isr_table_offset);
 
 	if (config->numirqs > 32) {
-		dw_ictl_dispatch_child_isrs(regs->irq_maskstatus_h,
+		dw_ictl_dispatch_child_isrs(regs->irq_finalstatus_h,
 					    config->isr_table_offset + 32);
 	}
 }
@@ -155,3 +158,6 @@ static void dw_ictl_config_irq(const struct device *port)
 		    DEVICE_DT_INST_GET(0),
 		    DT_INST_IRQ(0, sense));
 }
+
+IRQ_PARENT_ENTRY_DEFINE(intc_dw, DEVICE_DT_INST_GET(0), DT_INST_IRQN(0),
+			INTC_INST_ISR_TBL_OFFSET(0), DT_INST_INTC_GET_AGGREGATOR_LEVEL(0));

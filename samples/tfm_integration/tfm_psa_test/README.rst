@@ -18,20 +18,39 @@ Building and Running
 
 You must choose a suite via the CONFIG_TFM_PSA_TEST_* configs.
 
+Only one of these suites can be run at a time, with the test suite set via one
+of the following kconfig options:
+
+* ``CONFIG_TFM_PSA_TEST_CRYPTO``
+* ``CONFIG_TFM_PSA_TEST_PROTECTED_STORAGE``
+* ``CONFIG_TFM_PSA_TEST_INTERNAL_TRUSTED_STORAGE``
+* ``CONFIG_TFM_PSA_TEST_STORAGE``
+* ``CONFIG_TFM_PSA_TEST_INITIAL_ATTESTATION``
+
+You can indicate the desired test suite at build time via a config flag:
+
+   .. code-block:: bash
+
+     $ west build samples/tfm_integration/tfm_psa_test/ \
+       -p -b mps2/an521/cpu0/ns -t run -- \
+       -DCONFIG_TFM_PSA_TEST_STORAGE=y
+
+Note that not all test suites are valid on all boards.
+
 On Target
 =========
 
-Refer to :ref:`tfm_ipc` for detailed instructions.
+Refer to :zephyr:code-sample:`tfm_ipc` for detailed instructions.
 
 On QEMU:
 ========
 
-Refer to :ref:`tfm_ipc` for detailed instructions.
+Refer to :zephyr:code-sample:`tfm_ipc` for detailed instructions.
 Following is an example based on ``west build``
 
    .. code-block:: bash
 
-      $ west build samples/tfm_integration/tfm_psa_test/ -p -b mps2_an521_ns -t run -- -DCONFIG_TFM_PSA_TEST_STORAGE=y
+      $ west build samples/tfm_integration/tfm_psa_test/ -p -b mps2/an521/cpu0/ns -t run -- -DCONFIG_TFM_PSA_TEST_STORAGE=y
 
 Sample Output
 =============

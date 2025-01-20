@@ -5,8 +5,9 @@
  */
 
 #include <stdint.h>
-#include <sys/byteorder.h>
-#include <drivers/bluetooth/hci_driver.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/drivers/bluetooth.h>
+#include "common/assert.h"
 
 struct net_buf *bt_hci_evt_create(uint8_t evt, uint8_t len)
 {
@@ -14,6 +15,8 @@ struct net_buf *bt_hci_evt_create(uint8_t evt, uint8_t len)
 	struct net_buf *buf;
 
 	buf = bt_buf_get_evt(evt, false, K_FOREVER);
+
+	BT_ASSERT(buf);
 
 	hdr = net_buf_add(buf, sizeof(*hdr));
 	hdr->evt = evt;

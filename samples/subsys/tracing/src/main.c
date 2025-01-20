@@ -5,10 +5,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <sys/printk.h>
-#include <logging/log.h>
-#include <usb/usb_device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/tracing/tracing.h>
 
 /*
  * The hello world demo has two threads that utilize semaphores and sleeping
@@ -19,7 +20,7 @@
 
 
 /* size of stack area used by each thread */
-#define STACKSIZE (1024 + CONFIG_TEST_EXTRA_STACKSIZE)
+#define STACKSIZE (2048)
 
 /* scheduling priority used by each thread */
 #define PRIORITY 7
@@ -27,6 +28,7 @@
 /* delay between greetings (in ms) */
 #define SLEEPTIME 500
 
+static uint32_t counter;
 
 /*
  * @param my_name      thread identification string
@@ -41,6 +43,10 @@ void helloLoop(const char *my_name,
 	while (1) {
 		/* take my semaphore */
 		k_sem_take(my_sem, K_FOREVER);
+
+		/* Provide a named trace, with the counter value */
+		sys_trace_named_event("counter_value", counter, 0);
+		counter++;
 
 		/* say "hello" */
 		tname = k_thread_name_get(k_current_get());

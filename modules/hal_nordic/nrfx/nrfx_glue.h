@@ -7,9 +7,16 @@
 #ifndef NRFX_GLUE_H__
 #define NRFX_GLUE_H__
 
-#include <sys/__assert.h>
-#include <sys/atomic.h>
-#include <irq.h>
+#if defined(CONFIG_CPU_CORTEX_M)
+/* Workaround for missing __ICACHE_PRESENT and __DCACHE_PRESENT symbols in MDK
+ * SoC definitions. To be removed when this is fixed.
+ */
+#include <cmsis_core_m_defaults.h>
+#endif
+
+#include <zephyr/sys/__assert.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/irq.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +42,11 @@ extern "C" {
 #define NRFX_ASSERT(expression)  __ASSERT_NO_MSG(expression)
 #endif
 
+#if defined(CONFIG_RISCV)
+/* included here due to dependency on NRFX_ASSERT definition */
+#include <hal/nrf_vpr_clic.h>
+#endif
+
 /**
  * @brief Macro for placing a compile time assertion.
  *
@@ -51,9 +63,9 @@ extern "C" {
  * @param irq_number IRQ number.
  * @param priority   Priority to be set.
  */
-#define NRFX_IRQ_PRIORITY_SET(irq_number, priority)  // Intentionally empty.
-                                                     // Priorities of IRQs are
-                                                     // set through IRQ_CONNECT.
+#define NRFX_IRQ_PRIORITY_SET(irq_number, priority)                                                \
+	ARG_UNUSED(priority)                                                                       \
+	/* Intentionally empty. Priorities of IRQs are set through IRQ_CONNECT. */
 
 /**
  * @brief Macro for enabling a specific IRQ.
@@ -84,14 +96,22 @@ extern "C" {
  *
  * @param irq_number IRQ number.
  */
-#define NRFX_IRQ_PENDING_SET(irq_number)  NVIC_SetPendingIRQ(irq_number)
+#if defined(CONFIG_RISCV)
+#define NRFX_IRQ_PENDING_SET(irq_number) nrf_vpr_clic_int_pending_set(NRF_VPRCLIC, irq_number)
+#else
+#define NRFX_IRQ_PENDING_SET(irq_number) NVIC_SetPendingIRQ(irq_number)
+#endif
 
 /**
  * @brief Macro for clearing the pending status of a specific IRQ.
  *
  * @param irq_number IRQ number.
  */
-#define NRFX_IRQ_PENDING_CLEAR(irq_number)  NVIC_ClearPendingIRQ(irq_number)
+#if defined(CONFIG_RISCV)
+#define NRFX_IRQ_PENDING_CLEAR(irq_number) nrf_vpr_clic_int_pending_clear(NRF_VPRCLIC, irq_number)
+#else
+#define NRFX_IRQ_PENDING_CLEAR(irq_number) NVIC_ClearPendingIRQ(irq_number)
+#endif
 
 /**
  * @brief Macro for checking the pending status of a specific IRQ.
@@ -99,7 +119,11 @@ extern "C" {
  * @retval true  If the IRQ is pending.
  * @retval false Otherwise.
  */
-#define NRFX_IRQ_IS_PENDING(irq_number)  (NVIC_GetPendingIRQ(irq_number) == 1)
+#if defined(CONFIG_RISCV)
+#define NRFX_IRQ_IS_PENDING(irq_number) nrf_vpr_clic_int_pending_check(NRF_VPRCLIC, irq_number)
+#else
+#define NRFX_IRQ_IS_PENDING(irq_number) (NVIC_GetPendingIRQ(irq_number) == 1)
+#endif
 
 /** @brief Macro for entering into a critical section. */
 #define NRFX_CRITICAL_SECTION_ENTER()  { unsigned int irq_lock_key = irq_lock();
@@ -195,6 +219,41 @@ void nrfx_busy_wait(uint32_t usec_to_wait);
  */
 #define NRFX_ATOMIC_FETCH_SUB(p_data, value)  atomic_sub(p_data, value)
 
+/**
+ * @brief Macro for running compare and swap on an atomic object.
+ *
+ * Value is updated to the new value only if it previously equaled old value.
+ *
+ * @param[in,out] p_data      Atomic memory pointer.
+ * @param[in]     old_value Expected old value.
+ * @param[in]     new_value   New value.
+ *
+ * @retval true If value was updated.
+ * @retval false If value was not updated because location was not equal to @p old_value.
+ */
+#define NRFX_ATOMIC_CAS(p_data, old_value, new_value) \
+	atomic_cas(p_data, old_value, new_value)
+
+/**
+ * @brief Macro for counting leading zeros.
+ *
+ * @param[in] value A word value.
+ *
+ * @return Number of leading 0-bits in @p value, starting at the most significant bit position.
+ *         If x is 0, the result is undefined.
+ */
+#define NRFX_CLZ(value) __builtin_clz(value)
+
+/**
+ * @brief Macro for counting trailing zeros.
+ *
+ * @param[in] value A word value.
+ *
+ * @return Number of trailing 0-bits in @p value, starting at the least significant bit position.
+ *         If x is 0, the result is undefined.
+ */
+#define NRFX_CTZ(value) __builtin_ctz(value)
+
 //------------------------------------------------------------------------------
 
 /**
@@ -216,67 +275,42 @@ void nrfx_busy_wait(uint32_t usec_to_wait);
 
 //------------------------------------------------------------------------------
 
-/** @brief Bitmask that defines DPPI channels that are reserved for use outside of the nrfx library. */
-#define NRFX_DPPI_CHANNELS_USED   (NRFX_PPI_CHANNELS_USED_BY_BT_CTLR |    \
-				   NRFX_PPI_CHANNELS_USED_BY_802154_DRV | \
-				   NRFX_PPI_CHANNELS_USED_BY_MPSL)
+/**
+ * @brief Macro for writing back cache lines associated with the specified buffer.
+ *
+ * @param[in] p_buffer Pointer to the buffer.
+ * @param[in] size     Size of the buffer.
+ */
+#define NRFY_CACHE_WB(p_buffer, size) \
+	do {                          \
+		(void)p_buffer;       \
+		(void)size;           \
+	} while (0)
 
-/** @brief Bitmask that defines DPPI groups that are reserved for use outside of the nrfx library. */
-#define NRFX_DPPI_GROUPS_USED     (NRFX_PPI_GROUPS_USED_BY_BT_CTLR |    \
-				   NRFX_PPI_GROUPS_USED_BY_802154_DRV | \
-				   NRFX_PPI_GROUPS_USED_BY_MPSL)
+/**
+ * @brief Macro for invalidating cache lines associated with the specified buffer.
+ *
+ * @param[in] p_buffer Pointer to the buffer.
+ * @param[in] size     Size of the buffer.
+ */
+#define NRFY_CACHE_INV(p_buffer, size) \
+	do {                           \
+		(void)p_buffer;        \
+		(void)size;            \
+	} while (0)
 
-/** @brief Bitmask that defines PPI channels that are reserved for use outside of the nrfx library. */
-#define NRFX_PPI_CHANNELS_USED    (NRFX_PPI_CHANNELS_USED_BY_BT_CTLR |    \
-				   NRFX_PPI_CHANNELS_USED_BY_802154_DRV | \
-				   NRFX_PPI_CHANNELS_USED_BY_MPSL)
-
-/** @brief Bitmask that defines PPI groups that are reserved for use outside of the nrfx library. */
-#define NRFX_PPI_GROUPS_USED      (NRFX_PPI_GROUPS_USED_BY_BT_CTLR |    \
-				   NRFX_PPI_GROUPS_USED_BY_802154_DRV | \
-				   NRFX_PPI_GROUPS_USED_BY_MPSL)
-
-/** @brief Bitmask that defines GPIOTE channels that are reserved for use outside of the nrfx library. */
-#define NRFX_GPIOTE_CHANNELS_USED 0
-
-#if defined(CONFIG_BT_CTLR)
-extern const uint32_t z_bt_ctlr_used_nrf_ppi_channels;
-extern const uint32_t z_bt_ctlr_used_nrf_ppi_groups;
-#define NRFX_PPI_CHANNELS_USED_BY_BT_CTLR   z_bt_ctlr_used_nrf_ppi_channels
-#define NRFX_PPI_GROUPS_USED_BY_BT_CTLR     z_bt_ctlr_used_nrf_ppi_groups
-#else
-#define NRFX_PPI_CHANNELS_USED_BY_BT_CTLR   0
-#define NRFX_PPI_GROUPS_USED_BY_BT_CTLR     0
-#endif
-
-#if defined(CONFIG_NRF_802154_RADIO_DRIVER)
-extern const uint32_t g_nrf_802154_used_nrf_ppi_channels;
-extern const uint32_t g_nrf_802154_used_nrf_ppi_groups;
-#define NRFX_PPI_CHANNELS_USED_BY_802154_DRV   g_nrf_802154_used_nrf_ppi_channels
-#define NRFX_PPI_GROUPS_USED_BY_802154_DRV     g_nrf_802154_used_nrf_ppi_groups
-#else
-#define NRFX_PPI_CHANNELS_USED_BY_802154_DRV   0
-#define NRFX_PPI_GROUPS_USED_BY_802154_DRV     0
-#endif
-
-#if defined(CONFIG_NRF_802154_RADIO_DRIVER) && \
-	!defined(CONFIG_NRF_802154_SL_OPENSOURCE)
-extern const uint32_t z_mpsl_used_nrf_ppi_channels;
-extern const uint32_t z_mpsl_used_nrf_ppi_groups;
-#define NRFX_PPI_CHANNELS_USED_BY_MPSL   z_mpsl_used_nrf_ppi_channels
-#define NRFX_PPI_GROUPS_USED_BY_MPSL     z_mpsl_used_nrf_ppi_groups
-#else
-#define NRFX_PPI_CHANNELS_USED_BY_MPSL   0
-#define NRFX_PPI_GROUPS_USED_BY_MPSL     0
-#endif
-
-/** @brief Bitmask that defines EGU instances that are reserved for use outside of the nrfx library. */
-#define NRFX_EGUS_USED            0
-
-/** @brief Bitmask that defines TIMER instances that are reserved for use outside of the nrfx library. */
-#define NRFX_TIMERS_USED          0
-
-//------------------------------------------------------------------------------
+/**
+ * @brief Macro for writing back and invalidating cache lines associated with
+ *        the specified buffer.
+ *
+ * @param[in] p_buffer Pointer to the buffer.
+ * @param[in] size     Size of the buffer.
+ */
+#define NRFY_CACHE_WBINV(p_buffer, size) \
+	do {                             \
+		(void)p_buffer;          \
+		(void)size;              \
+	} while (0)
 
 /**
  * @brief Function helping to integrate nrfx IRQ handlers with IRQ_CONNECT.

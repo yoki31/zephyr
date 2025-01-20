@@ -15,23 +15,13 @@
  */
 
 #include <kernel_internal.h>
-#include <linker/linker-defs.h>
-
-__weak void z_arm64_mm_init(bool is_primary_core) { }
-
-extern FUNC_NORETURN void z_cstart(void);
+#include <zephyr/linker/linker-defs.h>
+#include <zephyr/platform/hooks.h>
+#include <zephyr/arch/cache.h>
 
 extern void z_arm64_mm_init(bool is_primary_core);
 
-static inline void z_arm64_bss_zero(void)
-{
-	uint64_t *p = (uint64_t *)__bss_start;
-	uint64_t *end = (uint64_t *)__bss_end;
-
-	while (p < end) {
-		*p++ = 0U;
-	}
-}
+__weak void z_arm64_mm_init(bool is_primary_core) { }
 
 /**
  *
@@ -39,29 +29,38 @@ static inline void z_arm64_bss_zero(void)
  *
  * This routine prepares for the execution of and runs C code.
  *
- * @return N/A
  */
-void z_arm64_prep_c(void)
+void z_prep_c(void)
 {
+#if defined(CONFIG_SOC_PREP_HOOK)
+	soc_prep_hook();
+#endif
+
 	/* Initialize tpidrro_el0 with our struct _cpu instance address */
 	write_tpidrro_el0((uintptr_t)&_kernel.cpus[0]);
 
-	z_arm64_bss_zero();
-#ifdef CONFIG_XIP
+	z_bss_zero();
 	z_data_copy();
+#ifdef CONFIG_ARM64_SAFE_EXCEPTION_STACK
+	/* After bss clean, _kernel.cpus is in bss section */
+	z_arm64_safe_exception_stack_init();
 #endif
 	z_arm64_mm_init(true);
 	z_arm64_interrupt_init();
-	z_cstart();
 
+	z_cstart();
 	CODE_UNREACHABLE;
 }
 
-#if CONFIG_MP_NUM_CPUS > 1
-extern FUNC_NORETURN void z_arm64_secondary_start(void);
+
+#if CONFIG_MP_MAX_NUM_CPUS > 1
+extern FUNC_NORETURN void arch_secondary_cpu_init(void);
 void z_arm64_secondary_prep_c(void)
 {
-	z_arm64_secondary_start();
+	arch_secondary_cpu_init();
+#if CONFIG_ARCH_CACHE
+	arch_cache_init();
+#endif
 
 	CODE_UNREACHABLE;
 }

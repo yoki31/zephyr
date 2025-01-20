@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Nordic Semiconductor ASA
+ * Copyright (c) 2017, Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -7,7 +7,7 @@
 #ifndef NRFX_LOG_H__
 #define NRFX_LOG_H__
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 
 #ifdef __cplusplus
 extern "C" {

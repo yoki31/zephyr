@@ -14,14 +14,14 @@ version 1 databases.
 import logging
 import math
 import struct
+import colorama
 from colorama import Fore
 
-from .log_parser import LogParser
+from .log_parser import (LogParser, get_log_level_str_color, formalize_fmt_string)
+from .data_types import DataTypes
 
 
 HEX_BYTES_IN_LINE = 16
-
-LOG_LEVELS = [('none', Fore.WHITE), ('err', Fore.RED), ('wrn', Fore.YELLOW), ('inf', Fore.GREEN), ('dbg', Fore.BLUE)]
 
 # Need to keep sync with struct log_dict_output_msg_hdr in
 # include/logging/log_output_dict.h.
@@ -60,103 +60,6 @@ FMT_DROPPED_CNT = "H"
 logger = logging.getLogger("parser")
 
 
-def get_log_level_str_color(lvl):
-    """Convert numeric log level to string"""
-    if lvl < 0 or lvl >= len(LOG_LEVELS):
-        return ("unk", Fore.WHITE)
-
-    return LOG_LEVELS[lvl]
-
-
-def formalize_fmt_string(fmt_str):
-    """Replace unsupported formatter"""
-    new_str = fmt_str
-
-    # Python doesn't support %lld or %llu so need to remove extra 'l'
-    new_str = new_str.replace("%lld", "%ld")
-    new_str = new_str.replace("%llu", "%lu")
-
-    # No %p for pointer either, so use %x
-    new_str = new_str.replace("%p", "0x%x")
-
-    return new_str
-
-
-class DataTypes():
-    """Class regarding data types, their alignments and sizes"""
-    INT = 0
-    UINT = 1
-    LONG = 2
-    ULONG = 3
-    LONG_LONG = 4
-    ULONG_LONG = 5
-    PTR = 6
-    DOUBLE = 7
-    LONG_DOUBLE = 8
-    NUM_TYPES = 9
-
-    def __init__(self, database):
-        self.database = database
-        self.data_types = dict()
-
-        if database.is_tgt_64bit():
-            self.add_data_type(self.LONG, "q")
-            self.add_data_type(self.LONG_LONG, "q")
-            self.add_data_type(self.PTR, "Q")
-        else:
-            self.add_data_type(self.LONG, "i")
-            self.add_data_type(self.LONG_LONG, "q")
-            self.add_data_type(self.PTR, "I")
-
-        self.add_data_type(self.INT, "i")
-        self.add_data_type(self.DOUBLE, "d")
-        self.add_data_type(self.LONG_DOUBLE, "d")
-
-
-    def add_data_type(self, data_type, fmt):
-        """Add one data type"""
-        if self.database.is_tgt_little_endian():
-            endianness = "<"
-        else:
-            endianness = ">"
-
-        formatter = endianness + fmt
-
-        self.data_types[data_type] = dict()
-        self.data_types[data_type]['fmt'] = formatter
-
-        size = struct.calcsize(formatter)
-
-        if data_type == self.LONG_DOUBLE:
-            # Python doesn't have long double but we still
-            # need to skip correct number of bytes
-            size = 16
-
-        self.data_types[data_type]['sizeof'] = size
-
-        # Might need actual number for different architectures
-        # but these seem to work fine for now.
-        if self.database.is_tgt_64bit():
-            self.data_types[data_type]['align'] = 8
-        else:
-            self.data_types[data_type]['align'] = 4
-
-
-    def get_sizeof(self, data_type):
-        """Get sizeof() of a data type"""
-        return self.data_types[data_type]['sizeof']
-
-
-    def get_alignment(self, data_type):
-        """Get the alignment of a data type"""
-        return self.data_types[data_type]['align']
-
-
-    def get_formatter(self, data_type):
-        """Get the formatter for a data type"""
-        return self.data_types[data_type]['fmt']
-
-
 class LogParserV1(LogParser):
     """Log Parser V1"""
     def __init__(self, database):
@@ -180,8 +83,6 @@ class LogParserV1(LogParser):
         else:
             self.fmt_msg_timestamp = endian + FMT_MSG_TIMESTAMP_32
 
-        self.data_types = DataTypes(self.database)
-
 
     def __get_string(self, arg, arg_offset, string_tbl):
         one_str = self.database.find_string(arg)
@@ -195,7 +96,10 @@ class LogParserV1(LogParser):
             str_idx = arg_offset + self.data_types.get_sizeof(DataTypes.PTR) * 2
             str_idx /= self.data_types.get_sizeof(DataTypes.INT)
 
-            ret = string_tbl[int(str_idx)]
+            if int(str_idx) not in string_tbl:
+                ret = "<string@0x{0:x}>".format(arg)
+            else:
+                ret = string_tbl[int(str_idx)]
 
         return ret
 
@@ -206,10 +110,11 @@ class LogParserV1(LogParser):
         Python's string formatting"""
         idx = 0
         arg_offset = 0
+        arg_data_type = None
         is_parsing = False
         do_extract = False
 
-        args = list()
+        args = []
 
         # Translated from cbvprintf_package()
         for idx, fmt in enumerate(fmt_str):
@@ -236,14 +141,16 @@ class LogParserV1(LogParser):
                 # intmax_t, size_t or ptrdiff_t
                 arg_data_type = DataTypes.LONG
 
-            elif fmt in ('c', 'd', 'i', 'o', 'u') or str.lower(fmt) == 'x':
+            elif fmt in ('c', 'd', 'i', 'o', 'u', 'x', 'X'):
+                unsigned = fmt in ('c', 'o', 'u', 'x', 'X')
+
                 if fmt_str[idx - 1] == 'l':
                     if fmt_str[idx - 2] == 'l':
-                        arg_data_type = DataTypes.LONG_LONG
+                        arg_data_type = DataTypes.ULONG_LONG if unsigned else DataTypes.LONG_LONG
                     else:
-                        arg_data_type = DataTypes.LONG
+                        arg_data_type = DataTypes.ULONG if unsigned else DataTypes.LONG
                 else:
-                    arg_data_type = DataTypes.INT
+                    arg_data_type = DataTypes.UINT if unsigned else DataTypes.INT
 
                 is_parsing = False
                 do_extract = True
@@ -278,6 +185,11 @@ class LogParserV1(LogParser):
                 size = self.data_types.get_sizeof(arg_data_type)
                 unpack_fmt = self.data_types.get_formatter(arg_data_type)
 
+                # Align the argument list by rounding up
+                stack_align = self.data_types.get_stack_alignment(arg_data_type)
+                if stack_align > 1:
+                    arg_offset = int((arg_offset + (align - 1)) / align) * align
+
                 one_arg = struct.unpack_from(unpack_fmt, arg_list, arg_offset)[0]
 
                 if fmt == 's':
@@ -287,7 +199,8 @@ class LogParserV1(LogParser):
                 arg_offset += size
 
                 # Align the offset
-                arg_offset = int((arg_offset + align - 1) / align) * align
+                if stack_align > 1:
+                    arg_offset = int((arg_offset + align - 1) / align) * align
 
         return tuple(args)
 
@@ -295,7 +208,7 @@ class LogParserV1(LogParser):
     @staticmethod
     def extract_string_table(str_tbl):
         """Extract string table in a packaged log message"""
-        tbl = dict()
+        tbl = {}
 
         one_str = ""
         next_new_string = True
@@ -334,14 +247,16 @@ class LogParserV1(LogParser):
                 chr_vals += " "
 
             elif chr_done == HEX_BYTES_IN_LINE:
-                print(f"{color}%s%s|%s{Fore.RESET}" % ((" " * prefix_len), hex_vals, chr_vals))
+                print(f"{color}%s%s|%s{Fore.RESET}" % ((" " * prefix_len),
+                      hex_vals, chr_vals))
                 hex_vals = ""
                 chr_vals = ""
                 chr_done = 0
 
         if len(chr_vals) > 0:
             hex_padding = "   " * (HEX_BYTES_IN_LINE - chr_done)
-            print(f"{color}%s%s%s|%s{Fore.RESET}" % ((" " * prefix_len), hex_vals, hex_padding, chr_vals))
+            print(f"{color}%s%s%s|%s{Fore.RESET}" % ((" " * prefix_len),
+                  hex_vals, hex_padding, chr_vals))
 
 
     def parse_one_normal_msg(self, logdata, offset):
@@ -373,8 +288,16 @@ class LogParserV1(LogParser):
         # Extra data after packaged log
         extra_data = logdata[(offset + pkg_len):next_msg_offset]
 
-        # Number of packaged strings
+        # Number of appended strings in package
         num_packed_strings = struct.unpack_from("B", logdata, offset+1)[0]
+
+        # Number of read-only string indexes
+        num_ro_str_indexes = struct.unpack_from("B", logdata, offset+2)[0]
+        offset_end_of_args += num_ro_str_indexes
+
+        # Number of read-write string indexes
+        num_rw_str_indexes = struct.unpack_from("B", logdata, offset+3)[0]
+        offset_end_of_args += num_rw_str_indexes
 
         # Extract the string table in the packaged log message
         string_tbl = self.extract_string_table(logdata[offset_end_of_args:(offset + pkg_len)])
@@ -409,7 +332,7 @@ class LogParserV1(LogParser):
         log_msg = fmt_str % args
 
         if level == 0:
-            print("%s" % log_msg, end='')
+            print(f"{log_msg}", end='')
         else:
             log_prefix = f"[{timestamp:>10}] <{level_str}> {source_id_str}: "
             print(f"{color}%s%s{Fore.RESET}" % (log_prefix, log_msg))
@@ -435,7 +358,7 @@ class LogParserV1(LogParser):
                 num_dropped = struct.unpack_from(self.fmt_dropped_cnt, logdata, offset)
                 offset += struct.calcsize(self.fmt_dropped_cnt)
 
-                print("--- %d messages dropped ---" % num_dropped)
+                print(f"--- {num_dropped} messages dropped ---")
 
             elif msg_type == MSG_TYPE_NORMAL:
                 ret = self.parse_one_normal_msg(logdata, offset)
@@ -449,3 +372,5 @@ class LogParserV1(LogParser):
                 return False
 
         return True
+
+colorama.init()

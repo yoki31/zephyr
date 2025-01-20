@@ -11,16 +11,16 @@
 
 #define DT_DRV_COMPAT ti_lmp90xxx_gpio
 
-#include <drivers/gpio.h>
-#include <zephyr.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
 
 #define LOG_LEVEL CONFIG_GPIO_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(gpio_lmp90xxx);
 
-#include <drivers/adc/lmp90xxx.h>
+#include <zephyr/drivers/adc/lmp90xxx.h>
 
-#include "gpio_utils.h"
+#include <zephyr/drivers/gpio/gpio_utils.h>
 
 struct gpio_lmp90xxx_config {
 	/* gpio_driver_config needs to be first */
@@ -122,19 +122,6 @@ static int gpio_lmp90xxx_port_toggle_bits(const struct device *dev,
 	return lmp90xxx_gpio_port_toggle_bits(config->parent, pins);
 }
 
-static int gpio_lmp90xxx_pin_interrupt_configure(const struct device *dev,
-						 gpio_pin_t pin,
-						 enum gpio_int_mode mode,
-						 enum gpio_int_trig trig)
-{
-	ARG_UNUSED(dev);
-	ARG_UNUSED(pin);
-	ARG_UNUSED(mode);
-	ARG_UNUSED(trig);
-
-	return -ENOTSUP;
-}
-
 static int gpio_lmp90xxx_init(const struct device *dev)
 {
 	const struct gpio_lmp90xxx_config *config = dev->config;
@@ -148,17 +135,16 @@ static int gpio_lmp90xxx_init(const struct device *dev)
 	return 0;
 }
 
-static const struct gpio_driver_api gpio_lmp90xxx_api = {
+static DEVICE_API(gpio, gpio_lmp90xxx_api) = {
 	.pin_configure = gpio_lmp90xxx_config,
 	.port_set_masked_raw = gpio_lmp90xxx_port_set_masked_raw,
 	.port_set_bits_raw = gpio_lmp90xxx_port_set_bits_raw,
 	.port_clear_bits_raw = gpio_lmp90xxx_port_clear_bits_raw,
 	.port_toggle_bits = gpio_lmp90xxx_port_toggle_bits,
-	.pin_interrupt_configure = gpio_lmp90xxx_pin_interrupt_configure,
 	.port_get_raw = gpio_lmp90xxx_port_get_raw,
 };
 
-BUILD_ASSERT(CONFIG_GPIO_INIT_PRIORITY >
+BUILD_ASSERT(CONFIG_GPIO_LMP90XXX_INIT_PRIORITY >
 	     CONFIG_ADC_INIT_PRIORITY,
 	     "LMP90xxx GPIO driver must be initialized after LMP90xxx ADC "
 	     "driver");
@@ -175,11 +161,11 @@ BUILD_ASSERT(CONFIG_GPIO_INIT_PRIORITY >
 	static struct gpio_lmp90xxx_data gpio_lmp90xxx_##id##_data;	\
 									\
 	DEVICE_DT_INST_DEFINE(id,					\
-			    &gpio_lmp90xxx_init,			\
+			    gpio_lmp90xxx_init,				\
 			    NULL,					\
 			    &gpio_lmp90xxx_##id##_data,			\
 			    &gpio_lmp90xxx_##id##_cfg, POST_KERNEL,	\
-			    CONFIG_GPIO_INIT_PRIORITY,			\
+			    CONFIG_GPIO_LMP90XXX_INIT_PRIORITY,		\
 			    &gpio_lmp90xxx_api);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_LMP90XXX_DEVICE)

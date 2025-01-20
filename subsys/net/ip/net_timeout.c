@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <net/net_timeout.h>
-#include <sys_clock.h>
+#include <zephyr/net/net_timeout.h>
+#include <zephyr/sys_clock.h>
 
 void net_timeout_set(struct net_timeout *timeout,
 		     uint32_t lifetime,
@@ -121,7 +121,7 @@ uint32_t net_timeout_evaluate(struct net_timeout *timeout,
 
 	/* The residual elapsed must reduce timer_timeout, which is capped at
 	 * NET_TIMEOUT_MAX_VALUE.  But if subtracting would reduce the
-	 * counter to zero or go negative we need to reduce the the wrap
+	 * counter to zero or go negative we need to reduce the wrap
 	 * counter once more and add the residual to the counter, so the
 	 * counter remains positive.
 	 */

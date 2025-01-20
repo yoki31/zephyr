@@ -6,10 +6,10 @@
 
 #define DT_DRV_COMPAT openisa_rv32m1_trng
 
-#include <device.h>
-#include <drivers/entropy.h>
-#include <random/rand32.h>
-#include <init.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/entropy.h>
+#include <zephyr/random/random.h>
+#include <zephyr/init.h>
 
 #include "fsl_trng.h"
 
@@ -32,7 +32,7 @@ static int entropy_rv32m1_trng_get_entropy(const struct device *dev,
 	return 0;
 }
 
-static const struct entropy_driver_api entropy_rv32m1_trng_api_funcs = {
+static DEVICE_API(entropy, entropy_rv32m1_trng_api_funcs) = {
 	.get_entropy = entropy_rv32m1_trng_get_entropy
 };
 

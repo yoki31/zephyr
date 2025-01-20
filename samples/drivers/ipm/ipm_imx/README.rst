@@ -1,7 +1,8 @@
-.. _ipm_imx:
+.. zephyr:code-sample:: ipm-imx
+   :name: IPM on NXP i.MX
+   :relevant-api: ipm_interface
 
-i.MX IPM example
-################
+   Implement inter-processor mailbox (IPM) on i.MX SoCs containing a Messaging Unit peripheral.
 
 Overview
 ********
@@ -12,10 +13,10 @@ the received data is printed to the console. When sending the data back,
 it blocks until the data are read by the remote side.
 
 The i.MX Messaging Unit peripheral consists of four 32-bit transmit and receive
-registers. The sample uses the option :kconfig:`CONFIG_IPM_IMX_MAX_DATA_SIZE_4`,
+registers. The sample uses the option :kconfig:option:`CONFIG_IPM_IMX_MAX_DATA_SIZE_4`,
 which effectively creates four IPM channels. Selecting the option
-:kconfig:`CONFIG_IPM_IMX_MAX_DATA_SIZE_8` or
-:kconfig:`CONFIG_IPM_IMX_MAX_DATA_SIZE_16` would result in two 64-bit channels
+:kconfig:option:`CONFIG_IPM_IMX_MAX_DATA_SIZE_8` or
+:kconfig:option:`CONFIG_IPM_IMX_MAX_DATA_SIZE_16` would result in two 64-bit channels
 or a single 128-bit channel respectively.
 
 Note that this is just a simple demo to demonstrate the i.MX IPM functionality
@@ -34,11 +35,11 @@ It can be built as follows:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/drivers/ipm/ipm_imx
-   :board: udoo_neo_full_m4
+   :board: udoo_neo_full/mcimx6x/m4
    :goals: build flash
    :compact:
 
-Follow the instructions in the :ref:`udoo_neo_full_m4` board documentation
+Follow the instructions in the :zephyr:board:`udoo_neo_full` board documentation
 for how to load the Zephyr binary to the desired core and execute it.
 
 Building and Running the Linux Code

@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <toolchain.h>
-#include <arch/cpu.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/arch/cpu.h>
 #include <offsets_short.h>
-#include <syscall.h>
-#include <sys/mem_manage.h>
+#include <zephyr/syscall.h>
+#include <zephyr/kernel/mm.h>
 
 #ifdef CONFIG_X86_KPTI
 /* Copy interrupt return stack context to the trampoline stack, switch back
@@ -87,7 +87,7 @@ z_x86_syscall_entry_stub:
 	pushq	%rax
 
 	/* NOTE: Presumes phys=virt */
-	movq	$Z_MEM_PHYS_ADDR(z_x86_kernel_ptables), %rax
+	movq	$K_MEM_PHYS_ADDR(z_x86_kernel_ptables), %rax
 	movq	%rax, %cr3
 	popq	%rax
 	movq	$0, -8(%rsp)	/* Delete stashed RAX data */

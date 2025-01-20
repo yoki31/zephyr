@@ -9,7 +9,7 @@
 
 #ifndef _ASMLANGUAGE
 
-#include <toolchain/common.h>
+#include <zephyr/toolchain/common.h>
 
 #define _EXCEPTION_INTLIST(vector, dpl) \
 	".pushsection .gnu.linkonce.intList.exc_" #vector "\n\t" \
@@ -33,7 +33,7 @@
 /* Unfortunately, GCC extended asm doesn't work at toplevel so we need
  * to stringify stuff.
  *
- * What we are doing here is generating entires in the .intList section
+ * What we are doing here is generating entries in the .intList section
  * and also the assembly language stubs for the exception. We use
  * .gnu.linkonce section prefix so that the linker only includes the
  * first one of these it encounters for a particular vector. In this
@@ -62,7 +62,7 @@
  * Assign an exception handler to a particular vector in the IDT.
  *
  * @param handler A handler function of the prototype
- *                void handler(const z_arch_esf_t *esf)
+ *                void handler(const struct arch_esf *esf)
  * @param vector Vector index in the IDT
  */
 #define _EXCEPTION_CONNECT_NOCODE(handler, vector, dpl) \
@@ -75,7 +75,7 @@
  * The error code will be accessible in esf->errorCode
  *
  * @param handler A handler function of the prototype
- *                void handler(const z_arch_esf_t *esf)
+ *                void handler(const struct arch_esf *esf)
  * @param vector Vector index in the IDT
  */
 #define _EXCEPTION_CONNECT_CODE(handler, vector, dpl) \

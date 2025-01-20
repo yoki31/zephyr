@@ -4,14 +4,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <string.h>
-#include <arch/x86/multiboot.h>
-#include <arch/x86/memmap.h>
-
-#ifdef CONFIG_MULTIBOOT_INFO
+#include <zephyr/arch/x86/multiboot.h>
+#include <zephyr/arch/x86/memmap.h>
 
 struct multiboot_info multiboot_info;
+
+#ifdef CONFIG_DYNAMIC_BOOTARGS
+__pinned_noinit char multiboot_cmdline[CONFIG_BOOTARGS_ARGS_BUFFER_SIZE];
+
+const char *get_bootargs(void)
+{
+	return multiboot_cmdline;
+}
+#endif /* CONFIG_DYNAMIC_BOOTARGS */
 
 /*
  * called very early in the boot process to fetch data out of the multiboot
@@ -43,8 +50,8 @@ void z_multiboot_init(struct multiboot_info *info_pa)
 	 */
 	info = info_pa;
 #else
-	z_phys_map((uint8_t **)&info, POINTER_TO_UINT(info_pa),
-		   sizeof(*info_pa), K_MEM_CACHE_NONE);
+	k_mem_map_phys_bare((uint8_t **)&info, POINTER_TO_UINT(info_pa),
+			    sizeof(*info_pa), K_MEM_CACHE_NONE);
 #endif /* CONFIG_ARCH_MAPS_ALL_RAM */
 
 	if (info == NULL) {
@@ -72,8 +79,8 @@ void z_multiboot_init(struct multiboot_info *info_pa)
 #else
 		uint8_t *address_va;
 
-		z_phys_map(&address_va, info->mmap_addr, info->mmap_length,
-			   K_MEM_CACHE_NONE);
+		k_mem_map_phys_bare(&address_va, info->mmap_addr, info->mmap_length,
+				    K_MEM_CACHE_NONE);
 
 		address = POINTER_TO_UINT(address_va);
 #endif /* CONFIG_ARCH_MAPS_ALL_RAM */
@@ -132,60 +139,3 @@ void z_multiboot_init(struct multiboot_info *info_pa)
 	}
 #endif /* CONFIG_MULTIBOOT_MEMMAP */
 }
-
-#ifdef CONFIG_MULTIBOOT_FRAMEBUF
-
-#include <display/framebuf.h>
-
-static struct framebuf_dev_data multiboot_framebuf_data = {
-	.width = CONFIG_MULTIBOOT_FRAMEBUF_X,
-	.height = CONFIG_MULTIBOOT_FRAMEBUF_Y
-};
-
-static int multiboot_framebuf_init(const struct device *dev)
-{
-	struct framebuf_dev_data *data = FRAMEBUF_DATA(dev);
-	struct multiboot_info *info = &multiboot_info;
-
-	if ((info->flags & MULTIBOOT_INFO_FLAGS_FB) &&
-	    (info->fb_width >= CONFIG_MULTIBOOT_FRAMEBUF_X) &&
-	    (info->fb_height >= CONFIG_MULTIBOOT_FRAMEBUF_Y) &&
-	    (info->fb_bpp == 32) && (info->fb_addr_hi == 0)) {
-		/*
-		 * We have a usable multiboot framebuffer - it is 32 bpp
-		 * and at least as large as the requested dimensions. Compute
-		 * the pitch and adjust the start address center our canvas.
-		 */
-
-		uint16_t adj_x;
-		uint16_t adj_y;
-		uint32_t *buffer;
-
-		adj_x = info->fb_width - CONFIG_MULTIBOOT_FRAMEBUF_X;
-		adj_y = info->fb_height - CONFIG_MULTIBOOT_FRAMEBUF_Y;
-		data->pitch = (info->fb_pitch / 4) + adj_x;
-		adj_x /= 2U;
-		adj_y /= 2U;
-		buffer = (uint32_t *) (uintptr_t) info->fb_addr_lo;
-		buffer += adj_x;
-		buffer += adj_y * data->pitch;
-		data->buffer = buffer;
-		return 0;
-	} else {
-		return -ENOTSUP;
-	}
-}
-
-DEVICE_DEFINE(multiboot_framebuf,
-		    "FRAMEBUF",
-		    multiboot_framebuf_init,
-		    NULL,
-		    &multiboot_framebuf_data,
-		    NULL,
-		    PRE_KERNEL_1,
-		    CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
-		    &framebuf_display_api);
-
-#endif /* CONFIG_MULTIBOOT_FRAMEBUF */
-
-#endif /* CONFIG_MULTIBOOT_INFO */

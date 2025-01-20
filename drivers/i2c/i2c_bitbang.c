@@ -13,13 +13,13 @@
  * the Standard-mode and Fast-mode speeds and doesn't support optional
  * protocol feature like 10-bit addresses or clock stretching.
  *
- * Timings and protocol are based Rev. 6 of the I2C specification:
- * http://www.nxp.com/documents/user_manual/UM10204.pdf
+ * Timings and protocol are based Rev. 7 of the I2C specification:
+ * https://www.nxp.com/docs/en/user-guide/UM10204.pdf
  */
 
 #include <errno.h>
-#include <kernel.h>
-#include <drivers/i2c.h>
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/i2c.h>
 #include "i2c_bitbang.h"
 
 /*
@@ -59,6 +59,19 @@ int i2c_bitbang_configure(struct i2c_bitbang *context, uint32_t dev_config)
 	default:
 		return -ENOTSUP;
 	}
+
+	context->dev_config = dev_config;
+
+	return 0;
+}
+
+int i2c_bitbang_get_config(struct i2c_bitbang *context, uint32_t *config)
+{
+	if (context->dev_config == 0) {
+		return -EIO;
+	}
+
+	*config = context->dev_config;
 
 	return 0;
 }

@@ -9,14 +9,15 @@
 #define DT_DRV_COMPAT openisa_rv32m1_gpio
 
 #include <errno.h>
-#include <device.h>
-#include <drivers/gpio.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/irq.h>
 #include <soc.h>
 #include <fsl_common.h>
 #include <fsl_port.h>
-#include <drivers/clock_control.h>
+#include <zephyr/drivers/clock_control.h>
 
-#include "gpio_utils.h"
+#include <zephyr/drivers/gpio/gpio_utils.h>
 
 struct gpio_rv32m1_config {
 	/* gpio_driver_config needs to be first */
@@ -63,6 +64,8 @@ static uint32_t get_port_pcr_irqc_value_from_flags(const struct device *dev,
 			case GPIO_INT_TRIG_BOTH:
 				port_interrupt = kPORT_InterruptEitherEdge;
 				break;
+			default:
+				return -EINVAL;
 			}
 		}
 	}
@@ -125,6 +128,10 @@ static int gpio_rv32m1_configure(const struct device *dev,
 	default:
 		return -ENOTSUP;
 	}
+
+	/* Set PCR mux to GPIO for the pin we are configuring */
+	mask |= PORT_PCR_MUX_MASK;
+	pcr |= PORT_PCR_MUX(kPORT_MuxAsGpio);
 
 	/* Now do the PORT module. Figure out the pullup/pulldown
 	 * configuration, but don't write it to the PCR register yet.
@@ -266,8 +273,11 @@ static int gpio_rv32m1_init(const struct device *dev)
 	int ret;
 
 	if (config->clock_dev) {
-		ret = clock_control_on(config->clock_dev, config->clock_subsys);
+		if (!device_is_ready(config->clock_dev)) {
+			return -ENODEV;
+		}
 
+		ret = clock_control_on(config->clock_dev, config->clock_subsys);
 		if (ret < 0) {
 			return ret;
 		}
@@ -276,7 +286,7 @@ static int gpio_rv32m1_init(const struct device *dev)
 	return config->irq_config_func(dev);
 }
 
-static const struct gpio_driver_api gpio_rv32m1_driver_api = {
+static DEVICE_API(gpio, gpio_rv32m1_driver_api) = {
 	.pin_configure = gpio_rv32m1_configure,
 	.port_get_raw = gpio_rv32m1_port_get_raw,
 	.port_set_masked_raw = gpio_rv32m1_port_set_masked_raw,
@@ -317,7 +327,7 @@ static const struct gpio_driver_api gpio_rv32m1_driver_api = {
 			    NULL,					\
 			    &gpio_rv32m1_##n##_data,			\
 			    &gpio_rv32m1_##n##_config,			\
-			    POST_KERNEL,				\
+			    PRE_KERNEL_1,				\
 			    CONFIG_GPIO_INIT_PRIORITY,			\
 			    &gpio_rv32m1_driver_api);			\
 									\

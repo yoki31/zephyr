@@ -5,16 +5,18 @@
 
 config UART_XEC
 	bool "Microchip XEC family UART driver"
-	depends on SOC_FAMILY_MEC
+	default y
+	depends on DT_HAS_MICROCHIP_XEC_UART_ENABLED
 	select SERIAL_HAS_DRIVER
 	select SERIAL_SUPPORT_INTERRUPT
+	select PINCTRL
 	help
 	  This option enables the UARTx driver for Microchip XEC MCUs.
 
 if UART_XEC
 
 config UART_XEC_LINE_CTRL
-	bool "Enable Serial Line Control for Apps"
+	bool "Serial Line Control for Apps"
 	depends on UART_LINE_CTRL
 	help
 	  This enables the API for apps to control the serial line,

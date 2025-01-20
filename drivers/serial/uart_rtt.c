@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <drivers/uart.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/kernel.h>
 #include <SEGGER_RTT.h>
 
 #define DT_DRV_COMPAT segger_rtt_uart
@@ -24,18 +25,6 @@ struct uart_rtt_data {
 #endif /* CONFIG_UART_ASYNC_API */
 };
 
-static inline
-const struct uart_rtt_config *get_dev_config(const struct device *dev)
-{
-	return dev->config;
-}
-
-static inline
-struct uart_rtt_data *get_dev_data(const struct device *dev)
-{
-	return dev->data;
-}
-
 static int uart_rtt_init(const struct device *dev)
 {
 	/*
@@ -43,8 +32,8 @@ static int uart_rtt_init(const struct device *dev)
 	 * it is configured in correct, non-blocking mode. Other channels
 	 * need to be configured at run-time.
 	 */
-	if (get_dev_config(dev)) {
-		const struct uart_rtt_config *cfg = get_dev_config(dev);
+	if (dev->config) {
+		const struct uart_rtt_config *cfg = dev->config;
 
 		SEGGER_RTT_ConfigUpBuffer(cfg->channel, dev->name,
 					  cfg->up_buffer, cfg->up_size,
@@ -67,8 +56,8 @@ static int uart_rtt_init(const struct device *dev)
 
 static int uart_rtt_poll_in(const struct device *dev, unsigned char *c)
 {
-	unsigned int ch =
-		get_dev_config(dev) ? get_dev_config(dev)->channel : 0;
+	const struct uart_rtt_config *config = dev->config;
+	unsigned int ch = config ? config->channel : 0;
 	unsigned int ret = SEGGER_RTT_Read(ch, c, 1);
 
 	return ret ? 0 : -1;
@@ -82,8 +71,8 @@ static int uart_rtt_poll_in(const struct device *dev, unsigned char *c)
  */
 static void uart_rtt_poll_out(const struct device *dev, unsigned char c)
 {
-	unsigned int ch =
-		get_dev_config(dev) ? get_dev_config(dev)->channel : 0;
+	const struct uart_rtt_config *config = dev->config;
+	unsigned int ch = config ? config->channel : 0;
 
 	SEGGER_RTT_Write(ch, &c, 1);
 }
@@ -93,35 +82,24 @@ static void uart_rtt_poll_out(const struct device *dev, unsigned char c)
 static int uart_rtt_callback_set(const struct device *dev,
 				 uart_callback_t callback, void *user_data)
 {
-	get_dev_data(dev)->callback = callback;
-	get_dev_data(dev)->user_data = user_data;
+	struct uart_rtt_data *data = dev->data;
+
+	data->callback = callback;
+	data->user_data = user_data;
 	return 0;
 }
 
 static int uart_rtt_tx(const struct device *dev,
 		       const uint8_t *buf, size_t len, int32_t timeout)
 {
-	const struct uart_rtt_config *cfg = get_dev_config(dev);
-	struct uart_rtt_data *data = get_dev_data(dev);
+	const struct uart_rtt_config *cfg = dev->config;
+	struct uart_rtt_data *data = dev->data;
 	unsigned int ch = cfg ? cfg->channel : 0;
 
 	ARG_UNUSED(timeout);
 
-	/* RTT mutex cannot be claimed in ISRs */
-	if (k_is_in_isr()) {
-		return -ENOTSUP;
-	}
-
-	/* Claim the RTT lock */
-	if (k_mutex_lock(&rtt_term_mutex, K_NO_WAIT) != 0) {
-		return -EBUSY;
-	}
-
 	/* Output the buffer */
-	SEGGER_RTT_WriteNoLock(ch, buf, len);
-
-	/* Return RTT lock */
-	SEGGER_RTT_UNLOCK();
+	SEGGER_RTT_Write(ch, buf, len);
 
 	/* Send the TX complete callback */
 	if (data->callback) {
@@ -182,7 +160,7 @@ static int uart_rtt_rx_buf_rsp(const struct device *dev,
 
 #endif /* CONFIG_UART_ASYNC_API */
 
-static const struct uart_driver_api uart_rtt_driver_api = {
+static DEVICE_API(uart, uart_rtt_driver_api) = {
 	.poll_in = uart_rtt_poll_in,
 	.poll_out = uart_rtt_poll_out,
 #ifdef CONFIG_UART_ASYNC_API
@@ -210,6 +188,7 @@ static const struct uart_driver_api uart_rtt_driver_api = {
 		.up_size = sizeof(uart_rtt##idx##_tx_buf),		    \
 		.down_buffer = uart_rtt##idx##_rx_buf,			    \
 		.down_size = sizeof(uart_rtt##idx##_rx_buf),		    \
+		.channel = idx,						    \
 	}
 
 #define UART_RTT_INIT(idx, config)					      \

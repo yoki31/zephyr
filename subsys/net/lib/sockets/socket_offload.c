@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_socket_offload, CONFIG_NET_SOCKETS_LOG_LEVEL);
 
-#include <net/socket_offload.h>
-#include <net/socket.h>
+#include <zephyr/net/socket_offload.h>
+#include <zephyr/net/socket.h>
 
 #include "sockets_internal.h"
 
@@ -37,5 +37,5 @@ void socket_offload_freeaddrinfo(struct zsock_addrinfo *res)
 	__ASSERT_NO_MSG(dns_offload);
 	__ASSERT_NO_MSG(dns_offload->freeaddrinfo);
 
-	return dns_offload->freeaddrinfo(res);
+	dns_offload->freeaddrinfo(res);
 }

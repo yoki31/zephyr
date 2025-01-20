@@ -8,11 +8,13 @@
 #define DT_DRV_COMPAT openisa_rv32m1_lpuart
 
 #include <errno.h>
-#include <device.h>
-#include <drivers/uart.h>
-#include <drivers/clock_control.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/clock_control.h>
+#include <zephyr/irq.h>
 #include <fsl_lpuart.h>
 #include <soc.h>
+#include <zephyr/drivers/pinctrl.h>
 
 struct rv32m1_lpuart_config {
 	LPUART_Type *base;
@@ -25,6 +27,7 @@ struct rv32m1_lpuart_config {
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 	void (*irq_config_func)(const struct device *dev);
 #endif
+	const struct pinctrl_dev_config *pincfg;
 };
 
 struct rv32m1_lpuart_data {
@@ -90,7 +93,7 @@ static int rv32m1_lpuart_fifo_fill(const struct device *dev,
 				   int len)
 {
 	const struct rv32m1_lpuart_config *config = dev->config;
-	uint8_t num_tx = 0U;
+	int num_tx = 0U;
 
 	while ((len - num_tx > 0) &&
 	       (LPUART_GetStatusFlags(config->base)
@@ -106,7 +109,7 @@ static int rv32m1_lpuart_fifo_read(const struct device *dev, uint8_t *rx_data,
 				   const int len)
 {
 	const struct rv32m1_lpuart_config *config = dev->config;
-	uint8_t num_rx = 0U;
+	int num_rx = 0U;
 
 	while ((len - num_rx > 0) &&
 	       (LPUART_GetStatusFlags(config->base)
@@ -240,10 +243,15 @@ static int rv32m1_lpuart_init(const struct device *dev)
 	const struct rv32m1_lpuart_config *config = dev->config;
 	lpuart_config_t uart_config;
 	uint32_t clock_freq;
+	int err;
 
 	/* set clock source */
 	/* TODO: Don't change if another core has configured */
 	CLOCK_SetIpSrc(config->clock_ip_name, config->clock_ip_src);
+
+	if (!device_is_ready(config->clock_dev)) {
+		return -ENODEV;
+	}
 
 	if (clock_control_get_rate(config->clock_dev, config->clock_subsys,
 				   &clock_freq)) {
@@ -261,6 +269,11 @@ static int rv32m1_lpuart_init(const struct device *dev)
 
 	LPUART_Init(config->base, &uart_config, clock_freq);
 
+	err = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
+	if (err != 0) {
+		return err;
+	}
+
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 	config->irq_config_func(dev);
 #endif
@@ -268,7 +281,7 @@ static int rv32m1_lpuart_init(const struct device *dev)
 	return 0;
 }
 
-static const struct uart_driver_api rv32m1_lpuart_driver_api = {
+static DEVICE_API(uart, rv32m1_lpuart_driver_api) = {
 	.poll_in = rv32m1_lpuart_poll_in,
 	.poll_out = rv32m1_lpuart_poll_out,
 	.err_check = rv32m1_lpuart_err_check,
@@ -300,6 +313,7 @@ static const struct uart_driver_api rv32m1_lpuart_driver_api = {
 		.clock_ip_src = kCLOCK_IpSrcFircAsync,			\
 		.baud_rate = DT_INST_PROP(n, current_speed),		\
 		.hw_flow_control = DT_INST_PROP(n, hw_flow_control),	\
+		.pincfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),		\
 		IRQ_FUNC_INIT						\
 	}
 
@@ -324,12 +338,14 @@ static const struct uart_driver_api rv32m1_lpuart_driver_api = {
 #endif
 
 #define RV32M1_LPUART_INIT(n)						\
+	PINCTRL_DT_INST_DEFINE(n);					\
+									\
 	static struct rv32m1_lpuart_data rv32m1_lpuart_##n##_data;	\
 									\
 	static const struct rv32m1_lpuart_config rv32m1_lpuart_##n##_cfg;\
 									\
 	DEVICE_DT_INST_DEFINE(n,					\
-			    &rv32m1_lpuart_init,			\
+			    rv32m1_lpuart_init,				\
 			    NULL,					\
 			    &rv32m1_lpuart_##n##_data,			\
 			    &rv32m1_lpuart_##n##_cfg,			\

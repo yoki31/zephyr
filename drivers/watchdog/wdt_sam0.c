@@ -8,10 +8,11 @@
 #define DT_DRV_COMPAT atmel_sam0_watchdog
 
 #include <soc.h>
-#include <drivers/watchdog.h>
+#include <zephyr/drivers/watchdog.h>
 
 #define LOG_LEVEL CONFIG_WDT_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(wdt_sam0);
 
 #define WDT_REGS ((Wdt *)DT_INST_REG_ADDR(0))
@@ -241,7 +242,7 @@ static int wdt_sam0_feed(const struct device *dev, int channel_id)
 	return 0;
 }
 
-static const struct wdt_driver_api wdt_sam0_api = {
+static DEVICE_API(wdt, wdt_sam0_api) = {
 	.setup = wdt_sam0_setup,
 	.disable = wdt_sam0_disable,
 	.install_timeout = wdt_sam0_install_timeout,

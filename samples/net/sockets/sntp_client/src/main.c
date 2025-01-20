@@ -5,19 +5,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(net_sntp_client_sample, LOG_LEVEL_DBG);
 
-#include <net/sntp.h>
-#ifdef CONFIG_POSIX_API
+#include <zephyr/net/sntp.h>
 #include <arpa/inet.h>
-#endif
 
 #include "config.h"
+#include "net_sample_common.h"
 
 #define SNTP_PORT 123
 
-void main(void)
+int main(void)
 {
 	struct sntp_ctx ctx;
 	struct sockaddr_in addr;
@@ -26,6 +25,8 @@ void main(void)
 #endif
 	struct sntp_time sntp_time;
 	int rv;
+
+	wait_for_network();
 
 	/* ipv4 */
 	memset(&addr, 0, sizeof(addr));
@@ -82,4 +83,5 @@ void main(void)
 
 end:
 	sntp_close(&ctx);
+	return 0;
 }

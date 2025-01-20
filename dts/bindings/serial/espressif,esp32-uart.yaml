@@ -2,31 +2,32 @@ description: ESP32 UART
 
 compatible: "espressif,esp32-uart"
 
-include: uart-controller.yaml
+include: [uart-controller.yaml, uart-controller-pin-inversion.yaml, pinctrl-device.yaml]
 
 properties:
-    reg:
-      required: true
+  reg:
+    required: true
 
-    interrupts:
-      required: false
+  pinctrl-0:
+    required: true
 
-    tx-pin:
-      type: int
-      description: TX pin
-      required: true
+  pinctrl-names:
+    required: true
 
-    rx-pin:
-      type: int
-      description: RX pin
-      required: true
+  stop-bits:
+    description: |
+      Sets the number of stop bits. Defaults to standard of 1 if not specified.
+    default: "1"
 
-    rts-pin:
-      type: int
-      description: RTS pin
-      required: false
+  data-bits:
+    description: |
+      Sets the number of data bits. Defaults to standard of 8 if not specified.
+    default: 8
 
-    cts-pin:
-      type: int
-      description: CTS pin
-      required: false
+  hw-rs485-hd-mode:
+    type: boolean
+    description: |
+      Enable the hardware RS485 half duplex mode.
+      Overrides hw-flow-control if both are set.
+      Using this mode, the pin assigned to DTR
+      is asserted during transmission.

@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <device.h>
-#include <devicetree.h>
-#include <drivers/gpio.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/hci.h>
 
 static struct bt_conn *default_conn;
 
@@ -79,7 +79,7 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	if (default_conn == NULL) {
-		default_conn = conn;
+		default_conn = bt_conn_ref(conn);
 	}
 
 	if (conn != default_conn) {
@@ -99,7 +99,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
-	printk("Disconnected: %s (reason 0x%02x)\n", addr, reason);
+	printk("Disconnected: %s, reason 0x%02x %s\n", addr, reason, bt_hci_err_to_str(reason));
 
 	bt_conn_unref(default_conn);
 	default_conn = NULL;
@@ -110,7 +110,11 @@ static struct bt_conn_cb conn_callbacks = {
 	.disconnected = disconnected,
 };
 
-void main(void)
+static const struct bt_data sd[] = {
+	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
+int main(void)
 {
 	struct bt_le_per_adv_sync_transfer_param past_param;
 	int err;
@@ -121,7 +125,7 @@ void main(void)
 	err = bt_enable(NULL);
 	if (err) {
 		printk("Bluetooth init failed (err %d)\n", err);
-		return;
+		return 0;
 	}
 
 	printk("Connection callbacks register...");
@@ -139,13 +143,13 @@ void main(void)
 						    &past_param);
 	if (err) {
 		printk("PAST subscribe failed (err %d)\n", err);
-		return;
+		return 0;
 	}
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_NAME, NULL, 0, NULL, 0);
+	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, NULL, 0, sd, ARRAY_SIZE(sd));
 	if (err) {
 		printk("Advertising failed to start (err %d)\n", err);
-		return;
+		return 0;
 	}
 
 	do {
@@ -153,7 +157,7 @@ void main(void)
 		err = k_sem_take(&sem_per_sync, K_FOREVER);
 		if (err) {
 			printk("failed (err %d)\n", err);
-			return;
+			return 0;
 		}
 		printk("Periodic sync established.\n");
 
@@ -161,8 +165,9 @@ void main(void)
 		err = k_sem_take(&sem_per_sync_lost, K_FOREVER);
 		if (err) {
 			printk("failed (err %d)\n", err);
-			return;
+			return 0;
 		}
 		printk("Periodic sync lost.\n");
 	} while (true);
+	return 0;
 }

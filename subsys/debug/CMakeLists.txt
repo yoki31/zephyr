@@ -1,11 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
-if(CONFIG_OPENOCD_SUPPORT)
-  message(WARNING "CONFIG_OPENOCD_SUPPORT is deprecated
-  Please use DEBUG_THREAD_INFO instead."
-)
-endif()
-
 zephyr_sources_ifdef(
   CONFIG_DEBUG_THREAD_INFO
   thread_info.c
@@ -26,12 +20,22 @@ add_subdirectory_ifdef(
   coredump
   )
 
-zephyr_sources_ifdef(
+add_subdirectory_ifdef(
   CONFIG_GDBSTUB
-  gdbstub.c
+  gdbstub
   )
 
 zephyr_sources_ifdef(
-  CONFIG_GDBSTUB_SERIAL_BACKEND
-  gdbstub/gdbstub_backend_serial.c
+  CONFIG_MIPI_STP_DECODER
+  mipi_stp_decoder.c
   )
+
+add_subdirectory_ifdef(
+  CONFIG_SYMTAB
+  symtab
+  )
+
+zephyr_sources_ifdef(
+  CONFIG_CS_TRACE_DEFMT
+  coresight/cs_trace_defmt.c
+)

@@ -7,11 +7,11 @@
 #ifndef LITEX_MMCM_H
 #define LITEX_MMCM_H
 
+#include <zephyr/sys/util.h>
 #include <zephyr/types.h>
 
 /* Common values */
-#define PICOS_IN_SEC		1000000000000
-#define BITS_PER_BYTE		8
+#define PICOS_IN_SEC 1000000000000
 
 /* MMCM specific numbers */
 #define CLKOUT_MAX		7
@@ -33,28 +33,18 @@
 /* Base address */
 #define DRP_BASE		DT_REG_ADDR_BY_IDX(MMCM, 0)
 /* Register address */
-#define DRP_ADDR_RESET		DT_REG_ADDR_BY_IDX(MMCM, 0/*DRP_RESET*/)
-#define DRP_ADDR_LOCKED		DT_REG_ADDR_BY_IDX(MMCM, 1/*DRP_LOCEKD*/)
-#define DRP_ADDR_READ		DT_REG_ADDR_BY_IDX(MMCM, 2/*DRP_READ*/)
-#define DRP_ADDR_WRITE		DT_REG_ADDR_BY_IDX(MMCM, 3/*DRP_WRITE*/)
-#define DRP_ADDR_DRDY		DT_REG_ADDR_BY_IDX(MMCM, 4/*DRP_DRDY*/)
-#define DRP_ADDR_ADR		DT_REG_ADDR_BY_IDX(MMCM, 5/*DRP_ADR*/)
-#define DRP_ADDR_DAT_W		DT_REG_ADDR_BY_IDX(MMCM, 6/*DRP_DAT_W*/)
-#define DRP_ADDR_DAT_R		DT_REG_ADDR_BY_IDX(MMCM, 7/*DRP_DAT_R*/)
-/* Register size */
-#define DRP_SIZE_RESET		DT_REG_SIZE_BY_IDX(MMCM, 0/*DRP_RESET*/)
-#define DRP_SIZE_LOCKED		DT_REG_SIZE_BY_IDX(MMCM, 1/*DRP_LOCKED*/)
-#define DRP_SIZE_READ		DT_REG_SIZE_BY_IDX(MMCM, 2/*DRP_READ*/)
-#define DRP_SIZE_WRITE		DT_REG_SIZE_BY_IDX(MMCM, 3/*DRP_WRITE*/)
-#define DRP_SIZE_DRDY		DT_REG_SIZE_BY_IDX(MMCM, 4/*DRP_DRDY*/)
-#define DRP_SIZE_ADR		DT_REG_SIZE_BY_IDX(MMCM, 5/*DRP_ADR*/)
-#define DRP_SIZE_DAT_W		DT_REG_SIZE_BY_IDX(MMCM, 6/*DRP_DAT_W*/)
-#define DRP_SIZE_DAT_R		DT_REG_SIZE_BY_IDX(MMCM, 7/*DRP_DAT_R*/)
+#define DRP_ADDR_RESET		DT_REG_ADDR_BY_NAME(MMCM, drp_reset)
+#define DRP_ADDR_LOCKED		DT_REG_ADDR_BY_NAME(MMCM, drp_locked)
+#define DRP_ADDR_READ		DT_REG_ADDR_BY_NAME(MMCM, drp_read)
+#define DRP_ADDR_WRITE		DT_REG_ADDR_BY_NAME(MMCM, drp_write)
+#define DRP_ADDR_DRDY		DT_REG_ADDR_BY_NAME(MMCM, drp_drdy)
+#define DRP_ADDR_ADR		DT_REG_ADDR_BY_NAME(MMCM, drp_adr)
+#define DRP_ADDR_DAT_W		DT_REG_ADDR_BY_NAME(MMCM, drp_dat_w)
+#define DRP_ADDR_DAT_R		DT_REG_ADDR_BY_NAME(MMCM, drp_dat_r)
 
 /* Devicetree global defines */
 #define LOCK_TIMEOUT		DT_PROP(MMCM, litex_lock_timeout)
 #define DRDY_TIMEOUT		DT_PROP(MMCM, litex_drdy_timeout)
-#define SYS_CLOCK_FREQUENCY	DT_PROP(MMCM, litex_sys_clock_frequency)
 #define DIVCLK_DIVIDE_MIN	DT_PROP(MMCM, litex_divclk_divide_min)
 #define DIVCLK_DIVIDE_MAX	DT_PROP(MMCM, litex_divclk_divide_max)
 #define CLKFBOUT_MULT_MIN	DT_PROP(MMCM, litex_clkfbout_mult_min)
@@ -83,7 +73,7 @@
 	lcko->margin.exp = CLKOUT_MARGIN_EXP(N);
 
 /* Devicetree clkout defines */
-#define CLKOUT_EXIST(N)		DT_NODE_HAS_STATUS(DT_NODELABEL(clk##N), okay)
+#define CLKOUT_EXIST(N)		DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(clk##N))
 #define CLKOUT_ID(N)		DT_REG_ADDR(DT_NODELABEL(clk##N))
 #define CLKOUT_FREQ(N)		DT_PROP(DT_NODELABEL(clk##N), \
 				litex_clock_frequency)
@@ -252,7 +242,6 @@ struct litex_clk_device {
 	struct litex_clk_range clkfbout;	/* clkfbout_mult_frange */
 	struct litex_clk_range vco;		/* vco_freq_range */
 	uint8_t *update_clkout;			/* which clkout needs update */
-	uint32_t sys_clk_freq;			/* input frequency */
 	uint32_t vco_margin;
 	uint32_t nclkout;
 };

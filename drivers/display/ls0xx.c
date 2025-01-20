@@ -6,16 +6,16 @@
 
 #define DT_DRV_COMPAT   sharp_ls0xx
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ls0xx, CONFIG_DISPLAY_LOG_LEVEL);
 
 #include <string.h>
-#include <device.h>
-#include <drivers/display.h>
-#include <init.h>
-#include <drivers/gpio.h>
-#include <drivers/spi.h>
-#include <sys/byteorder.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/display.h>
+#include <zephyr/init.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/spi.h>
+#include <zephyr/sys/byteorder.h>
 
 /* Supports LS012B7DD01, LS012B7DD06, LS013B7DH03, LS013B7DH05
  * LS013B7DH06, LS027B7DH01A, LS032B7DD02, LS044Q7DH01
@@ -42,31 +42,26 @@ LOG_MODULE_REGISTER(ls0xx, CONFIG_DISPLAY_LOG_LEVEL);
 #define LS0XX_BIT_VCOM        0x02
 #define LS0XX_BIT_CLEAR       0x04
 
-struct ls0xx_data {
-#if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
-	const struct device *disp_dev;
-#endif
-#if DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
-	const struct device *extcomin_dev;
-#endif
-};
-
 struct ls0xx_config {
 	struct spi_dt_spec bus;
+#if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
+	struct gpio_dt_spec disp_en_gpio;
+#endif
+#if DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
+	struct gpio_dt_spec extcomin_gpio;
+#endif
 };
 
 #if DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
 /* Driver will handle VCOM toggling */
 static void ls0xx_vcom_toggle(void *a, void *b, void *c)
 {
-	struct ls0xx_data *driver = (struct ls0xx_data *)a;
+	const struct ls0xx_config *config = a;
 
 	while (1) {
-		gpio_pin_toggle(driver->extcomin_dev,
-				DT_INST_GPIO_PIN(0, extcomin_gpios));
+		gpio_pin_toggle_dt(&config->extcomin_gpio);
 		k_usleep(3);
-		gpio_pin_toggle(driver->extcomin_dev,
-				DT_INST_GPIO_PIN(0, extcomin_gpios));
+		gpio_pin_toggle_dt(&config->extcomin_gpio);
 		k_msleep(1000 / DT_INST_PROP(0, extcomin_frequency));
 	}
 }
@@ -78,10 +73,9 @@ struct k_thread vcom_toggle_thread;
 static int ls0xx_blanking_off(const struct device *dev)
 {
 #if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
-	struct ls0xx_data *driver = dev->data;
+	const struct ls0xx_config *config = dev->config;
 
-	return gpio_pin_set(driver->disp_dev,
-			    DT_INST_GPIO_PIN(0, disp_en_gpios), 1);
+	return gpio_pin_set_dt(&config->disp_en_gpio, 1);
 #else
 	LOG_WRN("Unsupported");
 	return -ENOTSUP;
@@ -91,10 +85,9 @@ static int ls0xx_blanking_off(const struct device *dev)
 static int ls0xx_blanking_on(const struct device *dev)
 {
 #if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
-	struct ls0xx_data *driver = dev->data;
+	const struct ls0xx_config *config = dev->config;
 
-	return gpio_pin_set(driver->disp_dev,
-			    DT_INST_GPIO_PIN(0, disp_en_gpios), 0);
+	return gpio_pin_set_dt(&config->disp_en_gpio, 0);
 #else
 	LOG_WRN("Unsupported");
 	return -ENOTSUP;
@@ -210,34 +203,6 @@ static int ls0xx_write(const struct device *dev, const uint16_t x,
 	return ls0xx_update_display(dev, y + 1, desc->height, buf);
 }
 
-static int ls0xx_read(const struct device *dev, const uint16_t x,
-		      const uint16_t y,
-		      const struct display_buffer_descriptor *desc,
-		      void *buf)
-{
-	LOG_ERR("not supported");
-	return -ENOTSUP;
-}
-
-static void *ls0xx_get_framebuffer(const struct device *dev)
-{
-	LOG_ERR("not supported");
-	return NULL;
-}
-
-static int ls0xx_set_brightness(const struct device *dev,
-				const uint8_t brightness)
-{
-	LOG_WRN("not supported");
-	return -ENOTSUP;
-}
-
-static int ls0xx_set_contrast(const struct device *dev, uint8_t contrast)
-{
-	LOG_WRN("not supported");
-	return -ENOTSUP;
-}
-
 static void ls0xx_get_capabilities(const struct device *dev,
 				   struct display_capabilities *caps)
 {
@@ -247,13 +212,6 @@ static void ls0xx_get_capabilities(const struct device *dev,
 	caps->supported_pixel_formats = PIXEL_FORMAT_MONO01;
 	caps->current_pixel_format = PIXEL_FORMAT_MONO01;
 	caps->screen_info = SCREEN_INFO_X_ALIGNMENT_WIDTH;
-}
-
-static int ls0xx_set_orientation(const struct device *dev,
-				 const enum display_orientation orientation)
-{
-	LOG_ERR("Unsupported");
-	return -ENOTSUP;
 }
 
 static int ls0xx_set_pixel_format(const struct device *dev,
@@ -270,44 +228,35 @@ static int ls0xx_set_pixel_format(const struct device *dev,
 static int ls0xx_init(const struct device *dev)
 {
 	const struct ls0xx_config *config = dev->config;
-	struct ls0xx_data *driver = dev->data;
 
-	if (!spi_is_ready(&config->bus)) {
+	if (!spi_is_ready_dt(&config->bus)) {
 		LOG_ERR("SPI bus %s not ready", config->bus.bus->name);
 		return -ENODEV;
 	}
 
 #if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
-	driver->disp_dev = device_get_binding(
-		DT_INST_GPIO_LABEL(0, disp_en_gpios));
-	if (driver->disp_dev == NULL) {
-		LOG_ERR("Could not get DISP pin port for LS0XX");
-		return -EIO;
+	if (!gpio_is_ready_dt(&config->disp_en_gpio)) {
+		LOG_ERR("DISP port device not ready");
+		return -ENODEV;
 	}
 	LOG_INF("Configuring DISP pin to OUTPUT_HIGH");
-	gpio_pin_configure(driver->disp_dev,
-			   DT_INST_GPIO_PIN(0, disp_en_gpios),
-			   GPIO_OUTPUT_HIGH);
+	gpio_pin_configure_dt(&config->disp_en_gpio, GPIO_OUTPUT_HIGH);
 #endif
 
 #if DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
-	driver->extcomin_dev = device_get_binding(
-		DT_INST_GPIO_LABEL(0, extcomin_gpios));
-	if (driver->extcomin_dev == NULL) {
-		LOG_ERR("Could not get EXTCOMIN pin port for LS0XX");
-		return -EIO;
+	if (!gpio_is_ready_dt(&config->extcomin_gpio)) {
+		LOG_ERR("EXTCOMIN port device not ready");
+		return -ENODEV;
 	}
 	LOG_INF("Configuring EXTCOMIN pin");
-	gpio_pin_configure(driver->extcomin_dev,
-			   DT_INST_GPIO_PIN(0, extcomin_gpios),
-			   GPIO_OUTPUT_LOW);
+	gpio_pin_configure_dt(&config->extcomin_gpio, GPIO_OUTPUT_LOW);
 
 	/* Start thread for toggling VCOM */
 	k_tid_t vcom_toggle_tid = k_thread_create(&vcom_toggle_thread,
 						  vcom_toggle_stack,
 						  K_THREAD_STACK_SIZEOF(vcom_toggle_stack),
 						  ls0xx_vcom_toggle,
-						  driver, NULL, NULL,
+						  (void *)config, NULL, NULL,
 						  3, 0, K_NO_WAIT);
 	k_thread_name_set(vcom_toggle_tid, "ls0xx_vcom");
 #endif  /* DT_INST_NODE_HAS_PROP(0, extcomin_gpios) */
@@ -316,29 +265,26 @@ static int ls0xx_init(const struct device *dev)
 	return ls0xx_clear(dev);
 }
 
-static struct ls0xx_data ls0xx_driver;
-
 static const struct ls0xx_config ls0xx_config = {
 	.bus = SPI_DT_SPEC_INST_GET(
 		0, SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
 		SPI_TRANSFER_LSB | SPI_CS_ACTIVE_HIGH |
-		SPI_HOLD_ON_CS | SPI_LOCK_ON, 0)
+		SPI_HOLD_ON_CS | SPI_LOCK_ON, 0),
+#if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)
+	.disp_en_gpio = GPIO_DT_SPEC_INST_GET(0, disp_en_gpios),
+#endif
+#if DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
+	.extcomin_gpio = GPIO_DT_SPEC_INST_GET(0, extcomin_gpios),
+#endif
 };
 
-static struct display_driver_api ls0xx_driver_api = {
+static DEVICE_API(display, ls0xx_driver_api) = {
 	.blanking_on = ls0xx_blanking_on,
 	.blanking_off = ls0xx_blanking_off,
 	.write = ls0xx_write,
-	.read = ls0xx_read,
-	.get_framebuffer = ls0xx_get_framebuffer,
-	.set_brightness = ls0xx_set_brightness,
-	.set_contrast = ls0xx_set_contrast,
 	.get_capabilities = ls0xx_get_capabilities,
 	.set_pixel_format = ls0xx_set_pixel_format,
-	.set_orientation = ls0xx_set_orientation,
 };
 
-DEVICE_DT_INST_DEFINE(0, ls0xx_init, NULL,
-		      &ls0xx_driver, &ls0xx_config,
-		      POST_KERNEL, CONFIG_DISPLAY_INIT_PRIORITY,
-		      &ls0xx_driver_api);
+DEVICE_DT_INST_DEFINE(0, ls0xx_init, NULL, NULL, &ls0xx_config, POST_KERNEL,
+		      CONFIG_DISPLAY_INIT_PRIORITY, &ls0xx_driver_api);

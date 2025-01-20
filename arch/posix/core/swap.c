@@ -13,17 +13,17 @@
  *
  */
 
-#include "kernel.h"
-#include <kernel_structs.h>
+#include <zephyr/kernel.h>
+#include <zephyr/kernel_structs.h>
 #include "posix_core.h"
-#include "irq.h"
+#include <zephyr/irq.h>
 #include "kswap.h"
-#include <pm/pm.h>
+#include <zephyr/pm/pm.h>
 
 int arch_swap(unsigned int key)
 {
 	/*
-	 * struct k_thread * _current is the currently runnig thread
+	 * struct k_thread * _current is the currently running thread
 	 * struct k_thread * _kernel.ready_q.cache contains the next thread to
 	 * run (cannot be NULL)
 	 *
@@ -50,7 +50,7 @@ int arch_swap(unsigned int key)
 		_current->callee_saved.thread_status;
 
 
-	_current = _kernel.ready_q.cache;
+	z_current_thread_set(_kernel.ready_q.cache);
 #if CONFIG_INSTRUMENT_THREAD_SWITCHING
 	z_thread_mark_switched_in();
 #endif
@@ -94,7 +94,7 @@ void arch_switch_to_main_thread(struct k_thread *main_thread, char *stack_ptr,
 	z_thread_mark_switched_out();
 #endif
 
-	_current = _kernel.ready_q.cache;
+	z_current_thread_set(_kernel.ready_q.cache);
 
 #ifdef CONFIG_INSTRUMENT_THREAD_SWITCHING
 	z_thread_mark_switched_in();
@@ -112,7 +112,7 @@ void posix_irq_check_idle_exit(void)
 {
 	if (_kernel.idle) {
 		_kernel.idle = 0;
-		z_pm_save_idle_exit();
+		pm_system_resume();
 	}
 }
 #endif

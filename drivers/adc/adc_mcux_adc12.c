@@ -7,13 +7,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT nxp_kinetis_adc12
+#define DT_DRV_COMPAT nxp_adc12
 
-#include <drivers/adc.h>
+#include <zephyr/drivers/adc.h>
 #include <fsl_adc12.h>
+#include <zephyr/drivers/pinctrl.h>
 
 #define LOG_LEVEL CONFIG_ADC_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/irq.h>
 LOG_MODULE_REGISTER(adc_mcux_adc12);
 
 #define ADC_CONTEXT_USES_KERNEL_TIMER
@@ -26,6 +28,7 @@ struct mcux_adc12_config {
 	adc12_reference_voltage_source_t ref_src;
 	uint32_t sample_clk_count;
 	void (*irq_config_func)(const struct device *dev);
+	const struct pinctrl_dev_config *pincfg;
 };
 
 struct mcux_adc12_data {
@@ -163,6 +166,15 @@ static void mcux_adc12_start_channel(const struct device *dev)
 	LOG_DBG("Starting channel %d", data->channel_id);
 	channel_config.enableInterruptOnConversionCompleted = true;
 	channel_config.channelNumber = data->channel_id;
+#if defined(CONFIG_SOC_S32K146) || defined(CONFIG_SOC_S32K148)
+	if (data->channel_id >= 16) {
+		/*
+		 * channels 16..31 are encoded as 100000b..101111b in
+		 * SC1[ADCH] field
+		 */
+		channel_config.channelNumber += 16;
+	}
+#endif
 	ADC12_SetChannelConfig(config->base, channel_group, &channel_config);
 }
 
@@ -216,6 +228,7 @@ static int mcux_adc12_init(const struct device *dev)
 	struct mcux_adc12_data *data = dev->data;
 	ADC_Type *base = config->base;
 	adc12_config_t adc_config;
+	int err;
 
 	ADC12_GetDefaultConfig(&adc_config);
 
@@ -233,18 +246,15 @@ static int mcux_adc12_init(const struct device *dev)
 	config->irq_config_func(dev);
 	data->dev = dev;
 
+	err = pinctrl_apply_state(config->pincfg, PINCTRL_STATE_DEFAULT);
+	if (err) {
+		return err;
+	}
+
 	adc_context_unlock_unconditionally(&data->ctx);
 
 	return 0;
 }
-
-static const struct adc_driver_api mcux_adc12_driver_api = {
-	.channel_setup = mcux_adc12_channel_setup,
-	.read = mcux_adc12_read,
-#ifdef CONFIG_ADC_ASYNC
-	.read_async = mcux_adc12_read_async,
-#endif
-};
 
 #define ASSERT_WITHIN_RANGE(val, min, max, str) \
 	BUILD_ASSERT(val >= min && val <= max, str)
@@ -258,8 +268,19 @@ static const struct adc_driver_api mcux_adc12_driver_api = {
 				 (kADC12_ReferenceVoltageSourceValt),	\
 				 (kADC12_ReferenceVoltageSourceVref))
 
+#define ADC12_MCUX_DRIVER_API(n)				\
+	static DEVICE_API(adc, mcux_adc12_driver_api_##n) = {	\
+		.channel_setup = mcux_adc12_channel_setup,	\
+		.read = mcux_adc12_read,	\
+		IF_ENABLED(CONFIG_ADC_ASYNC, (.read_async = mcux_adc12_read_async,))	\
+		.ref_internal = DT_INST_PROP(n, vref_mv),	\
+	};
+
 #define ACD12_MCUX_INIT(n)						\
 	static void mcux_adc12_config_func_##n(const struct device *dev); \
+									\
+	PINCTRL_DT_INST_DEFINE(n);					\
+	ADC12_MCUX_DRIVER_API(n);					\
 									\
 	ASSERT_WITHIN_RANGE(DT_INST_PROP(n, clk_source), 0, 3,		\
 			    "Invalid clock source");			\
@@ -275,6 +296,7 @@ static const struct adc_driver_api mcux_adc12_driver_api = {
 		.ref_src = ADC12_REF_SRC(n),				\
 		.sample_clk_count = DT_INST_PROP(n, sample_time),	\
 		.irq_config_func = mcux_adc12_config_func_##n,		\
+		.pincfg = PINCTRL_DT_INST_DEV_CONFIG_GET(n),		\
 	};								\
 									\
 	static struct mcux_adc12_data mcux_adc12_data_##n = {		\
@@ -287,7 +309,7 @@ static const struct adc_driver_api mcux_adc12_driver_api = {
 			    NULL, &mcux_adc12_data_##n,			\
 			    &mcux_adc12_config_##n, POST_KERNEL,	\
 			    CONFIG_ADC_INIT_PRIORITY,			\
-			    &mcux_adc12_driver_api);			\
+			    &mcux_adc12_driver_api_##n);		\
 									\
 	static void mcux_adc12_config_func_##n(const struct device *dev) \
 	{								\

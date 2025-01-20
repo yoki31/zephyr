@@ -5,11 +5,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#if !defined(CONFIG_BT_CTLR_TIFS_HW)
-#define SW_SWITCH_TIMER NRF_TIMER1
-#define SW_SWITCH_TIMER_EVTS_COMP_BASE 0
-#define SW_SWITCH_TIMER_TASK_GROUP_BASE 0
-#endif /* !CONFIG_BT_CTLR_TIFS_HW */
+/* Use the NRF_RTC instance for coarse radio event scheduling */
+#define NRF_RTC NRF_RTC0
+
+/* HAL abstraction of event timer prescaler value */
+#define HAL_EVENT_TIMER_PRESCALER_VALUE 4U
 
 /* TXEN->TXIDLE + TXIDLE->TX in microseconds. */
 #define HAL_RADIO_NRF51_TXEN_TXIDLE_TX_US 140
@@ -23,8 +23,25 @@
 #define HAL_RADIO_NRF51_RX_CHAIN_DELAY_US 3 /* ceil(3.0) */
 #define HAL_RADIO_NRF51_RX_CHAIN_DELAY_NS 3000 /* 3.0 */
 
+/* HAL abstraction of Radio bitfields */
+#define HAL_NRF_RADIO_EVENT_END              NRF_RADIO_EVENT_END
+#define HAL_RADIO_EVENTS_END                 EVENTS_END
+#define HAL_RADIO_INTENSET_DISABLED_Msk      RADIO_INTENSET_DISABLED_Msk
+#define HAL_RADIO_SHORTS_TRX_END_DISABLE_Msk RADIO_SHORTS_END_DISABLE_Msk
+
+/* HAL abstraction of Radio IRQ number */
+#define HAL_RADIO_IRQn                          RADIO_IRQn
+
 static inline void hal_radio_reset(void)
 {
+	/* TODO: Add any required setup for each radio event
+	 */
+}
+
+static inline void hal_radio_stop(void)
+{
+	/* TODO: Add any required cleanup of actions taken in hal_radio_reset()
+	 */
 }
 
 static inline void hal_radio_ram_prio_setup(void)

@@ -5,17 +5,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#ifdef CONFIG_SOC_POSIX
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L /* Required for gmtime_r */
+#endif
+
 #define DT_DRV_COMPAT microchip_mcp7940n
 
-#include <device.h>
-#include <drivers/counter.h>
-#include <drivers/gpio.h>
-#include <drivers/i2c.h>
-#include <drivers/rtc/mcp7940n.h>
-#include <kernel.h>
-#include <logging/log.h>
-#include <sys/timeutil.h>
-#include <sys/util.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/counter.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/rtc/mcp7940n.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/timeutil.h>
+#include <zephyr/sys/util.h>
 #include <time.h>
 
 LOG_MODULE_REGISTER(MCP7940N, CONFIG_COUNTER_LOG_LEVEL);
@@ -43,9 +48,8 @@ LOG_MODULE_REGISTER(MCP7940N, CONFIG_COUNTER_LOG_LEVEL);
 
 struct mcp7940n_config {
 	struct counter_config_info generic;
-	const struct device *i2c_dev;
+	struct i2c_dt_spec i2c;
 	const struct gpio_dt_spec int_gpios;
-	uint8_t addr;
 };
 
 struct mcp7940n_data {
@@ -193,9 +197,7 @@ static int read_register(const struct device *dev, uint8_t addr, uint8_t *val)
 {
 	const struct mcp7940n_config *cfg = dev->config;
 
-	int rc = i2c_write_read(cfg->i2c_dev, cfg->addr,
-				&addr, sizeof(addr),
-				val, 1);
+	int rc = i2c_write_read_dt(&cfg->i2c, &addr, sizeof(addr), val, 1);
 
 	return rc;
 }
@@ -204,7 +206,7 @@ static int read_register(const struct device *dev, uint8_t addr, uint8_t *val)
  *
  * @param dev the MCP7940N device pointer.
  * @param unix_time pointer to time_t value that will contain unix time if
- * sucessful.
+ * successful.
  *
  * @retval return 0 on success, or a negative error code from an I2C
  * transaction.
@@ -215,9 +217,8 @@ static int read_time(const struct device *dev, time_t *unix_time)
 	const struct mcp7940n_config *cfg = dev->config;
 	uint8_t addr = REG_RTC_SEC;
 
-	int rc = i2c_write_read(cfg->i2c_dev, cfg->addr,
-				&addr, sizeof(addr),
-				&data->registers, RTC_TIME_REGISTERS_SIZE);
+	int rc = i2c_write_read_dt(&cfg->i2c, &addr, sizeof(addr), &data->registers,
+				   RTC_TIME_REGISTERS_SIZE);
 
 	if (rc >= 0) {
 		*unix_time = decode_rtc(dev);
@@ -242,7 +243,7 @@ static int write_register(const struct device *dev, enum mcp7940n_register addr,
 
 	uint8_t time_data[2] = {addr, value};
 
-	rc = i2c_write(cfg->i2c_dev, time_data, sizeof(time_data), cfg->addr);
+	rc = i2c_write_dt(&cfg->i2c, time_data, sizeof(time_data));
 
 	return rc;
 }
@@ -287,7 +288,7 @@ static int write_data_block(const struct device *dev, enum mcp7940n_register add
 	time_data[0] = addr;
 	memcpy(&time_data[1], write_block_start, size);
 
-	rc = i2c_write(cfg->i2c_dev, time_data, size + 1, cfg->addr);
+	rc = i2c_write_dt(&cfg->i2c, time_data, size + 1);
 
 	return rc;
 }
@@ -310,9 +311,7 @@ static int set_day_of_week(const struct device *dev, time_t *unix_time)
 	struct tm time_buffer = { 0 };
 	int rc = 0;
 
-	gmtime_r(unix_time, &time_buffer);
-
-	if (time_buffer.tm_wday != 0) {
+	if (gmtime_r(unix_time, &time_buffer) != NULL) {
 		data->registers.rtc_weekday.weekday = time_buffer.tm_wday;
 		rc = write_register(dev, REG_RTC_WDAY,
 			*((uint8_t *)(&data->registers.rtc_weekday)));
@@ -668,8 +667,8 @@ static int mcp7940n_init(const struct device *dev)
 	/* Initialize and take the lock */
 	k_sem_init(&data->lock, 0, 1);
 
-	if (!device_is_ready(cfg->i2c_dev)) {
-		LOG_ERR("I2C device %s is not ready", cfg->i2c_dev->name);
+	if (!device_is_ready(cfg->i2c.bus)) {
+		LOG_ERR("I2C device %s is not ready", cfg->i2c.bus->name);
 		rc = -ENODEV;
 		goto out;
 	}
@@ -695,7 +694,7 @@ static int mcp7940n_init(const struct device *dev)
 	/* Configure alarm interrupt gpio */
 	if (cfg->int_gpios.port != NULL) {
 
-		if (!device_is_ready(cfg->int_gpios.port)) {
+		if (!gpio_is_ready_dt(&cfg->int_gpios)) {
 			LOG_ERR("Port device %s is not ready",
 				cfg->int_gpios.port->name);
 			rc = -ENODEV;
@@ -713,7 +712,7 @@ static int mcp7940n_init(const struct device *dev)
 		gpio_init_callback(&data->int_callback, mcp7940n_init_cb,
 				   BIT(cfg->int_gpios.pin));
 
-		gpio_add_callback(cfg->int_gpios.port, &data->int_callback);
+		(void)gpio_add_callback(cfg->int_gpios.port, &data->int_callback);
 
 		/* Configure interrupt polarity */
 		if ((cfg->int_gpios.dt_flags & GPIO_ACTIVE_LOW) == GPIO_ACTIVE_LOW) {
@@ -734,7 +733,7 @@ out:
 	return rc;
 }
 
-static const struct counter_driver_api mcp7940n_api = {
+static DEVICE_API(counter, mcp7940n_api) = {
 	.start = mcp7940n_counter_start,
 	.stop = mcp7940n_counter_stop,
 	.get_value = mcp7940n_counter_get_value,
@@ -756,9 +755,8 @@ static const struct counter_driver_api mcp7940n_api = {
 			.flags = COUNTER_CONFIG_INFO_COUNT_UP,				\
 			.channels = 2,							\
 		},									\
-		.i2c_dev = DEVICE_DT_GET(DT_INST_BUS(index)),				\
-		.addr = DT_INST_REG_ADDR(index),					\
-		.int_gpios =  GPIO_DT_SPEC_GET_OR(DT_DRV_INST(index), int_gpios, {0}),	\
+		.i2c = I2C_DT_SPEC_INST_GET(index),					\
+		.int_gpios = GPIO_DT_SPEC_INST_GET_OR(index, int_gpios, {0}),		\
 	};										\
 											\
 	DEVICE_DT_INST_DEFINE(index, mcp7940n_init, NULL,				\

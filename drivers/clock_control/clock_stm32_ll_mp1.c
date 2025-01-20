@@ -7,9 +7,9 @@
 #include <soc.h>
 #include <stm32_ll_bus.h>
 #include <stm32_ll_rcc.h>
-#include <drivers/clock_control.h>
-#include <sys/util.h>
-#include <drivers/clock_control/stm32_clock_control.h>
+#include <zephyr/drivers/clock_control.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/drivers/clock_control/stm32_clock_control.h>
 
 /**
  * @brief fill in AHB/APB buses configuration structure
@@ -390,10 +390,15 @@ static int stm32_clock_control_get_subsys_rate(const struct device *clock,
 	default:
 		return -ENOTSUP;
 	}
+
+	if (pclken->div) {
+		*rate /= (pclken->div + 1);
+	}
+
 	return 0;
 }
 
-static struct clock_control_driver_api stm32_clock_control_api = {
+static DEVICE_API(clock_control, stm32_clock_control_api) = {
 	.on = stm32_clock_control_on,
 	.off = stm32_clock_control_off,
 	.get_rate = stm32_clock_control_get_subsys_rate,
@@ -410,7 +415,7 @@ static int stm32_clock_control_init(const struct device *dev)
  * that the device init runs just after SOC init
  */
 DEVICE_DT_DEFINE(DT_NODELABEL(rcc),
-		    &stm32_clock_control_init,
+		    stm32_clock_control_init,
 		    NULL,
 		    NULL, NULL,
 		    PRE_KERNEL_1,

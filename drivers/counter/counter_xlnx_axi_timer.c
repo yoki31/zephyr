@@ -6,10 +6,12 @@
 
 #define DT_DRV_COMPAT xlnx_xps_timer_1_00_a
 
-#include <device.h>
-#include <drivers/counter.h>
-#include <sys/sys_io.h>
-#include <logging/log.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/counter.h>
+#include <zephyr/irq.h>
+#include <zephyr/sys/sys_io.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(xlnx_axi_timer, CONFIG_COUNTER_LOG_LEVEL);
 
 /* AXI Timer v2.0 registers offsets (See Xilinx PG079 for details) */
@@ -292,7 +294,7 @@ static int xlnx_axi_timer_init(const struct device *dev)
 	const struct xlnx_axi_timer_config *config = dev->config;
 
 	LOG_DBG("max top value = 0x%08x", config->info.max_top_value);
-	LOG_DBG("freqency = %d", config->info.freq);
+	LOG_DBG("frequency = %d", config->info.freq);
 	LOG_DBG("channels = %d", config->info.channels);
 
 	xlnx_axi_timer_write32(dev, config->info.max_top_value, TLR0_OFFSET);
@@ -307,7 +309,7 @@ static int xlnx_axi_timer_init(const struct device *dev)
 	return 0;
 }
 
-static const struct counter_driver_api xlnx_axi_timer_driver_api = {
+static DEVICE_API(counter, xlnx_axi_timer_driver_api) = {
 	.start = xlnx_axi_timer_start,
 	.stop = xlnx_axi_timer_stop,
 	.get_value = xlnx_axi_timer_get_value,

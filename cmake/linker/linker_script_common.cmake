@@ -132,7 +132,7 @@ function(create_section)
   set(INDEX 100)
   set(settings_single "ALIGN;ANY;FIRST;KEEP;OFFSET;PRIO;SECTION;SORT")
   set(settings_multi  "FLAGS;INPUT;PASS;SYMBOLS")
-  foreach(settings ${SECTION_SETTINGS})
+  foreach(settings ${SECTION_SETTINGS} ${DEVICE_API_SECTION_SETTINGS})
     if("${settings}" MATCHES "^{(.*)}$")
       cmake_parse_arguments(SETTINGS "" "${settings_single}" "${settings_multi}" ${CMAKE_MATCH_1})
 
@@ -495,7 +495,7 @@ endfunction()
 # Tasks:
 # - Apply missing settings, such as initial address for first section in a region.
 # - Symbol names on sections
-# - Ordered list of all sections for easier retrival on printing and configuration.
+# - Ordered list of all sections for easier retrieval on printing and configuration.
 function(process_region_common)
   cmake_parse_arguments(REGION_COMMON "" "OBJECT" "" ${ARGN})
 
@@ -652,7 +652,7 @@ foreach(group ${GROUPS})
   endif()
 endforeach()
 
-foreach(section ${SECTIONS})
+foreach(section ${SECTIONS} ${DEVICE_API_SECTIONS})
   if("${section}" MATCHES "^{(.*)}$")
     create_section(${CMAKE_MATCH_1} SYSTEM ${new_system})
   endif()

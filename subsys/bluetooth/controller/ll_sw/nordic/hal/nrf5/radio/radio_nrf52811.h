@@ -4,6 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* Use the NRF_RTC instance for coarse radio event scheduling */
+#define NRF_RTC NRF_RTC0
+
+/* HAL abstraction of event timer prescaler value */
+#define HAL_EVENT_TIMER_PRESCALER_VALUE 4U
+
 /* NRF Radio HW timing constants
  * - provided in US and NS (for higher granularity)
  * - based on empirical measurements and sniffer logs
@@ -336,32 +342,38 @@
 #endif /* !CONFIG_BT_CTLR_TIFS_HW */
 #endif /* !CONFIG_BT_CTLR_RADIO_ENABLE_FAST */
 
-#if !defined(CONFIG_BT_CTLR_TIFS_HW)
-#if defined(CONFIG_BT_CTLR_SW_SWITCH_SINGLE_TIMER)
-#undef EVENT_TIMER_ID
-#define EVENT_TIMER_ID 4
-#define SW_SWITCH_TIMER EVENT_TIMER
-#define SW_SWITCH_TIMER_EVTS_COMP_BASE 3
-#define SW_SWITCH_TIMER_EVTS_COMP_S2_BASE 5
-#undef HAL_EVENT_TIMER_SAMPLE_CC_OFFSET
-#define HAL_EVENT_TIMER_SAMPLE_CC_OFFSET 2
-#undef HAL_EVENT_TIMER_SAMPLE_TASK
-#define HAL_EVENT_TIMER_SAMPLE_TASK NRF_TIMER_TASK_CAPTURE2
+/* HAL abstraction of Radio bitfields */
+#define HAL_NRF_RADIO_EVENT_END                   NRF_RADIO_EVENT_END
+#define HAL_RADIO_EVENTS_END                      EVENTS_END
+#define HAL_NRF_RADIO_EVENT_PHYEND                NRF_RADIO_EVENT_PHYEND
+#define HAL_RADIO_EVENTS_PHYEND                   EVENTS_PHYEND
+#define HAL_RADIO_INTENSET_DISABLED_Msk           RADIO_INTENSET_DISABLED_Msk
+#define HAL_RADIO_SHORTS_TRX_END_DISABLE_Msk      RADIO_SHORTS_END_DISABLE_Msk
+#define HAL_RADIO_SHORTS_TRX_PHYEND_DISABLE_Msk   RADIO_SHORTS_PHYEND_DISABLE_Msk
+#define HAL_RADIO_CLEARPATTERN_CLEARPATTERN_Clear RADIO_CLEARPATTERN_CLEARPATTERN_Clear
 
-#else /* !CONFIG_BT_CTLR_SW_SWITCH_SINGLE_TIMER */
-#define SW_SWITCH_TIMER NRF_TIMER1
-#define SW_SWITCH_TIMER_EVTS_COMP_BASE 0
-#define SW_SWITCH_TIMER_EVTS_COMP_S2_BASE 2
-#endif /* !CONFIG_BT_CTLR_SW_SWITCH_SINGLE_TIMER */
+/* HAL abstraction of Radio IRQ number */
+#define HAL_RADIO_IRQn                          RADIO_IRQn
 
-#define SW_SWITCH_TIMER_TASK_GROUP_BASE 0
-#endif /* !CONFIG_BT_CTLR_TIFS_HW */
+/* SoC specific NRF_RADIO power-on reset value. Refer to Product Specification,
+ * RADIO Registers section for the documented reset values.
+ *
+ * NOTE: Only implementation used values defined here.
+ *       In the future if MDK or nRFx header include these, use them instead.
+ */
+#define HAL_RADIO_RESET_VALUE_DFEMODE       0x00000000UL
+#define HAL_RADIO_RESET_VALUE_CTEINLINECONF 0x00002800UL
 
 static inline void hal_radio_reset(void)
 {
-	/* Anomalies 102, 106 and 107 */
-	*(volatile uint32_t *)0x40001774 = ((*(volatile uint32_t *)0x40001774) &
-					 0xfffffffe) | 0x01000000;
+	/* TODO: Add any required setup for each radio event
+	 */
+}
+
+static inline void hal_radio_stop(void)
+{
+	/* TODO: Add any required cleanup of actions taken in hal_radio_reset()
+	 */
 }
 
 static inline void hal_radio_ram_prio_setup(void)

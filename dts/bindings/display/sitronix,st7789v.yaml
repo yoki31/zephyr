@@ -6,120 +6,95 @@ description: ST7789V 320x240 display controller
 
 compatible: "sitronix,st7789v"
 
-include: spi-device.yaml
+include: [mipi-dbi-spi-device.yaml, display-controller.yaml]
 
 properties:
-    reset-gpios:
-      type: phandle-array
-      required: false
-      description: |
-        RESET pin.
+  x-offset:
+    type: int
+    required: true
+    description: The column offset in pixels of the LCD to the controller memory
 
-        The RESET pin of ST7789V is active low.
-        If connected directly the MCU pin should be configured
-        as active low.
+  y-offset:
+    type: int
+    required: true
+    description: The row offset in pixels of the LCD to the controller memory
 
-    cmd-data-gpios:
-      type: phandle-array
-      required: true
-      description: |
-        D/CX pin.
+  vcom:
+    type: int
+    required: true
+    description: VCOM Setting
 
-        The D/CX pin of ST7789V is active low (transmission command byte).
-        If connected directly the MCU pin should be configured
-        as active low.
+  gctrl:
+    type: int
+    required: true
+    description: Gate Control
 
-    height:
-      type: int
-      required: true
-      description: Height in pixels of the panel driven by the controller
+  vrhs:
+    type: int
+    description: VRH Setting
 
-    width:
-      type: int
-      required: true
-      description: Width in pixels of the panel driven by the controller
+  vdvs:
+    type: int
+    description: VDV Setting
 
-    x-offset:
-      type: int
-      required: true
-      description: The column offset in pixels of the LCD to the controller memory
+  mdac:
+    type: int
+    required: true
+    description: Memory Data Access Control
 
-    y-offset:
-      type: int
-      required: true
-      description: The row offset in pixels of the LCD to the controller memory
+  lcm:
+    type: int
+    required: true
+    description: LCM Setting
 
-    vcom:
-      type: int
-      required: true
-      description: VCOM Setting
+  colmod:
+    type: int
+    required: true
+    description: Interface Pixel Format
 
-    gctrl:
-      type: int
-      required: true
-      description: Gate Control
+  gamma:
+    type: int
+    required: true
+    description: Gamma Setting
 
-    vrhs:
-      type: int
-      required: false
-      description: VRH Setting
+  inversion-off:
+    type: boolean
+    description: Inversion Off
 
-    vdvs:
-      type: int
-      required: false
-      description: VDV Setting
+  porch-param:
+    type: uint8-array
+    required: true
+    description: Porch Setting
 
-    mdac:
-      type: int
-      required: true
-      description: Memory Data Access Control
+  cmd2en-param:
+    type: uint8-array
+    required: true
+    description: Command 2 Enable Parameter
 
-    lcm:
-      type: int
-      required: true
-      description: LCM Setting
+  pwctrl1-param:
+    type: uint8-array
+    required: true
+    description: Power Control 1 Parameter
 
-    colmod:
-      type: int
-      required: true
-      description: Interface Pixel Format
+  pvgam-param:
+    type: uint8-array
+    required: true
+    description: Positive Voltage Gamma Control Parameter
 
-    gamma:
-      type: int
-      required: true
-      description: Gamma Setting
+  nvgam-param:
+    type: uint8-array
+    required: true
+    description: Negative Voltage Gamma Control Parameter
 
-    porch-param:
-      type: uint8-array
-      required: true
-      description: Porch Setting
+  ram-param:
+    type: uint8-array
+    required: true
+    description: RAM Control Parameter
 
-    cmd2en-param:
-      type: uint8-array
-      required: true
-      description: Command 2 Enable Parameter
+  rgb-param:
+    type: uint8-array
+    required: true
+    description: RGB Interface Control Parameter
 
-    pwctrl1-param:
-      type: uint8-array
-      required: true
-      description: Power Control 1 Parameter
-
-    pvgam-param:
-      type: uint8-array
-      required: true
-      description: Positive Voltage Gamma Control Parameter
-
-    nvgam-param:
-      type: uint8-array
-      required: true
-      description: Negative Voltage Gamma Control Parameter
-
-    ram-param:
-      type: uint8-array
-      required: true
-      description: RAM Control Parameter
-
-    rgb-param:
-      type: uint8-array
-      required: true
-      description: RGB Interface Control Parameter
+  mipi-mode:
+    required: true

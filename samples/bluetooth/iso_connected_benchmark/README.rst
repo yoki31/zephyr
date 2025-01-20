@@ -1,11 +1,11 @@
-.. _iso_connected_benchmark:
+.. zephyr:code-sample:: bluetooth_isochronous_connected_benchmark
+   :name: Isochronous Connected Channels Benchmark
+   :relevant-api: bt_iso bluetooth
 
-Bluetooth: Throughput
-#####################
+   Measure packet loss and sync loss in connected ISO channels.
 
 The ISO Connected Channels Benchmark sample measures and reports packet loss
 and sync loss in connected ISO channels.
-
 
 Overview
 ********
@@ -19,9 +19,12 @@ can easily be changed.
 Requirements
 ************
 
-* A board with Bluetooth Low Energy 5.2 and Connected Isochronous Channel
-  support
-* A remote board running the same sample as the reversed role
+* BlueZ running on the host, or
+* A board with Bluetooth Low Energy 5.2 support
+* A Bluetooth Controller and board that supports setting
+  CONFIG_BT_CTLR_CENTRAL_ISO=y
+* A remote board running the same sample as the reversed role that supports
+  setting CONFIG_BT_CTLR_PERIPHERAL_ISO=y
 
 Building and running
 ********************
@@ -29,7 +32,7 @@ Building and running
 This sample can be found under
 :zephyr_file:`samples/bluetooth/iso_connected_benchmark` in the Zephyr tree.
 
-See :ref:`bluetooth samples section <bluetooth-samples>` for details.
+See :zephyr:code-sample-category:`bluetooth` samples for details.
 
 
 Testing

@@ -4,122 +4,44 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <device.h>
-#include <zephyr.h>
-#include <kernel.h>
-#include <timeout_q.h>
-#include <init.h>
+#include <zephyr/device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/kernel_structs.h>
+#include <zephyr/init.h>
 #include <string.h>
-#include <pm/device.h>
-#include <pm/device_runtime.h>
-#include <pm/pm.h>
-#include <pm/state.h>
-#include <pm/policy.h>
-#include <tracing/tracing.h>
+#include <zephyr/drivers/timer/system_timer.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/device_runtime.h>
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/state.h>
+#include <zephyr/pm/policy.h>
+#include <zephyr/tracing/tracing.h>
 
 #include "pm_stats.h"
+#include "device_system_managed.h"
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pm, CONFIG_PM_LOG_LEVEL);
 
-static ATOMIC_DEFINE(z_post_ops_required, CONFIG_MP_NUM_CPUS);
+static ATOMIC_DEFINE(z_post_ops_required, CONFIG_MP_MAX_NUM_CPUS);
 static sys_slist_t pm_notifiers = SYS_SLIST_STATIC_INIT(&pm_notifiers);
-static struct pm_state_info z_power_states[CONFIG_MP_NUM_CPUS];
-/* bitmask to check if a power state was forced. */
-static ATOMIC_DEFINE(z_power_states_forced, CONFIG_MP_NUM_CPUS);
-#ifdef CONFIG_PM_DEVICE
-static atomic_t z_cpus_active = ATOMIC_INIT(CONFIG_MP_NUM_CPUS);
-#endif
+
+/*
+ * Properly initialize cpu power states. Do not make assumptions that
+ * ACTIVE_STATE is 0
+ */
+#define CPU_PM_STATE_INIT(_, __)		\
+	{ .state = PM_STATE_ACTIVE }
+static struct pm_state_info z_cpus_pm_state[] = {
+	LISTIFY(CONFIG_MP_MAX_NUM_CPUS, CPU_PM_STATE_INIT, (,))
+};
+
+static struct pm_state_info z_cpus_pm_forced_state[] = {
+	LISTIFY(CONFIG_MP_MAX_NUM_CPUS, CPU_PM_STATE_INIT, (,))
+};
+
+static struct k_spinlock pm_forced_state_lock;
 static struct k_spinlock pm_notifier_lock;
-
-
-
-#ifdef CONFIG_PM_DEVICE
-extern const struct device *__pm_device_slots_start[];
-
-/* Number of devices successfully suspended. */
-static size_t num_susp;
-
-static int pm_suspend_devices(void)
-{
-	const struct device *devs;
-	size_t devc;
-
-	devc = z_device_get_all_static(&devs);
-
-	num_susp = 0;
-
-	for (const struct device *dev = devs + devc - 1; dev >= devs; dev--) {
-		int ret;
-
-		/*
-		 * ignore busy devices, wake up source and devices with
-		 * runtime PM enabled.
-		 */
-		if (pm_device_is_busy(dev) ||
-		    pm_device_wakeup_is_enabled(dev) ||
-		    ((dev->pm != NULL) && pm_device_runtime_is_enabled(dev))) {
-			continue;
-		}
-
-		ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
-		/* ignore devices not supporting or already at the given state */
-		if ((ret == -ENOSYS) || (ret == -ENOTSUP) || (ret == -EALREADY)) {
-			continue;
-		} else if (ret < 0) {
-			LOG_ERR("Device %s did not enter %s state (%d)",
-				dev->name,
-				pm_device_state_str(PM_DEVICE_STATE_SUSPENDED),
-				ret);
-			return ret;
-		}
-
-		__pm_device_slots_start[num_susp] = dev;
-		num_susp++;
-	}
-
-	return 0;
-}
-
-static void pm_resume_devices(void)
-{
-	for (int i = (num_susp - 1); i >= 0; i--) {
-		pm_device_action_run(__pm_device_slots_start[i],
-				    PM_DEVICE_ACTION_RESUME);
-	}
-
-	num_susp = 0;
-}
-#endif	/* CONFIG_PM_DEVICE */
-
-static inline void exit_pos_ops(struct pm_state_info info)
-{
-	extern __weak void
-		pm_power_state_exit_post_ops(struct pm_state_info info);
-
-	if (pm_power_state_exit_post_ops != NULL) {
-		pm_power_state_exit_post_ops(info);
-	} else {
-		/*
-		 * This function is supposed to be overridden to do SoC or
-		 * architecture specific post ops after sleep state exits.
-		 *
-		 * The kernel expects that irqs are unlocked after this.
-		 */
-
-		irq_unlock(0);
-	}
-}
-
-static inline void pm_state_set(struct pm_state_info info)
-{
-	extern __weak void
-		pm_power_state_set(struct pm_state_info info);
-
-	if (pm_power_state_set != NULL) {
-		pm_power_state_set(info);
-	}
-}
 
 /*
  * Function called to notify when the system is entering / exiting a
@@ -140,10 +62,33 @@ static inline void pm_state_notify(bool entering_state)
 		}
 
 		if (callback) {
-			callback(z_power_states[_current_cpu->id].state);
+			callback(z_cpus_pm_state[_current_cpu->id].state);
 		}
 	}
 	k_spin_unlock(&pm_notifier_lock, pm_notifier_key);
+}
+
+static inline int32_t ticks_expiring_sooner(int32_t ticks1, int32_t ticks2)
+{
+	/*
+	 * Ticks are relative numbers that defines the number of ticks
+	 * until the next event.
+	 * Its maximum value is K_TICKS_FOREVER ((uint32_t)-1) which is -1
+	 * when we cast it to (int32_t)
+	 * We need to find out which one is the closest
+	 */
+
+	__ASSERT(ticks1 >= -1, "ticks1 has unexpected negative value");
+	__ASSERT(ticks2 >= -1, "ticks2 has unexpected negative value");
+
+	if (ticks1 == K_TICKS_FOREVER) {
+		return ticks2;
+	}
+	if (ticks2 == K_TICKS_FOREVER) {
+		return ticks1;
+	}
+	/* At this step ticks1 and ticks2 are positive */
+	return MIN(ticks1, ticks2);
 }
 
 void pm_system_resume(void)
@@ -163,85 +108,108 @@ void pm_system_resume(void)
 	 * and it may schedule another thread.
 	 */
 	if (atomic_test_and_clear_bit(z_post_ops_required, id)) {
-		exit_pos_ops(z_power_states[id]);
+#ifdef CONFIG_PM_DEVICE_SYSTEM_MANAGED
+		if (atomic_add(&_cpus_active, 1) == 0) {
+			if ((z_cpus_pm_state[id].state != PM_STATE_RUNTIME_IDLE) &&
+					!z_cpus_pm_state[id].pm_device_disabled) {
+				pm_resume_devices();
+			}
+		}
+#endif
+		pm_state_exit_post_ops(z_cpus_pm_state[id].state, z_cpus_pm_state[id].substate_id);
 		pm_state_notify(false);
-		z_power_states[id] = (struct pm_state_info){PM_STATE_ACTIVE,
+#ifdef CONFIG_SYS_CLOCK_EXISTS
+		sys_clock_idle_exit();
+#endif /* CONFIG_SYS_CLOCK_EXISTS */
+		z_cpus_pm_state[id] = (struct pm_state_info){PM_STATE_ACTIVE, 0, false,
 			0, 0};
 	}
 }
 
-bool pm_power_state_force(uint8_t cpu, struct pm_state_info info)
+bool pm_state_force(uint8_t cpu, const struct pm_state_info *info)
 {
-	bool ret = false;
+	k_spinlock_key_t key;
 
-	__ASSERT(info.state < PM_STATE_COUNT,
-		 "Invalid power state %d!", info.state);
+	__ASSERT(info->state < PM_STATE_COUNT,
+		 "Invalid power state %d!", info->state);
 
+	key = k_spin_lock(&pm_forced_state_lock);
+	z_cpus_pm_forced_state[cpu] = *info;
+	k_spin_unlock(&pm_forced_state_lock, key);
 
-	if (!atomic_test_and_set_bit(z_power_states_forced, cpu)) {
-		z_power_states[cpu] = info;
-		ret = true;
-	}
-
-	return ret;
+	return true;
 }
 
-bool pm_system_suspend(int32_t ticks)
+bool pm_system_suspend(int32_t kernel_ticks)
 {
-	bool ret = true;
 	uint8_t id = _current_cpu->id;
+	k_spinlock_key_t key;
+	int32_t ticks, events_ticks;
 
-	SYS_PORT_TRACING_FUNC_ENTER(pm, system_suspend, ticks);
+	SYS_PORT_TRACING_FUNC_ENTER(pm, system_suspend, kernel_ticks);
 
-	if (!atomic_test_and_set_bit(z_power_states_forced, id)) {
-		z_power_states[id] = pm_policy_next_state(id, ticks);
+	/*
+	 * CPU needs to be fully wake up before the event is triggered.
+	 * We need to find out first the ticks to the next event
+	 */
+	events_ticks = pm_policy_next_event_ticks();
+	ticks = ticks_expiring_sooner(kernel_ticks, events_ticks);
+
+	key = k_spin_lock(&pm_forced_state_lock);
+	if (z_cpus_pm_forced_state[id].state != PM_STATE_ACTIVE) {
+		z_cpus_pm_state[id] = z_cpus_pm_forced_state[id];
+		z_cpus_pm_forced_state[id].state = PM_STATE_ACTIVE;
+	} else {
+		const struct pm_state_info *info;
+
+		info = pm_policy_next_state(id, ticks);
+		if (info != NULL) {
+			z_cpus_pm_state[id] = *info;
+		} else {
+			z_cpus_pm_state[id].state = PM_STATE_ACTIVE;
+		}
 	}
+	k_spin_unlock(&pm_forced_state_lock, key);
 
-	if (z_power_states[id].state == PM_STATE_ACTIVE) {
+	if (z_cpus_pm_state[id].state == PM_STATE_ACTIVE) {
 		LOG_DBG("No PM operations done.");
 		SYS_PORT_TRACING_FUNC_EXIT(pm, system_suspend, ticks,
-				   z_power_states[id].state);
-		ret = false;
-		goto end;
+				   z_cpus_pm_state[id].state);
+		return false;
 	}
 
-	if (ticks != K_TICKS_FOREVER) {
-		/*
-		 * Just a sanity check in case the policy manager does not
-		 * handle this error condition properly.
-		 */
-		__ASSERT(z_power_states[id].min_residency_us >=
-			z_power_states[id].exit_latency_us,
-			"min_residency_us < exit_latency_us");
+#ifdef CONFIG_PM_DEVICE_SYSTEM_MANAGED
+	if (atomic_sub(&_cpus_active, 1) == 1) {
+		if ((z_cpus_pm_state[id].state != PM_STATE_RUNTIME_IDLE) &&
+		    !z_cpus_pm_state[id].pm_device_disabled) {
+			if (!pm_suspend_devices()) {
+				pm_resume_devices();
+				z_cpus_pm_state[id].state = PM_STATE_ACTIVE;
+				(void)atomic_add(&_cpus_active, 1);
+				SYS_PORT_TRACING_FUNC_EXIT(pm, system_suspend, ticks,
+							   z_cpus_pm_state[id].state);
+				return false;
+			}
+		}
+	}
+#endif
 
+	if ((z_cpus_pm_state[id].exit_latency_us != 0) &&
+	    (ticks != K_TICKS_FOREVER)) {
 		/*
 		 * We need to set the timer to interrupt a little bit early to
 		 * accommodate the time required by the CPU to fully wake up.
 		 */
-		z_set_timeout_expiry(ticks -
+		sys_clock_set_timeout(ticks -
 		     k_us_to_ticks_ceil32(
-			     z_power_states[id].exit_latency_us),
+			     z_cpus_pm_state[id].exit_latency_us),
 				     true);
 	}
 
-#if CONFIG_PM_DEVICE
-	if ((z_power_states[id].state != PM_STATE_RUNTIME_IDLE) &&
-			(atomic_sub(&z_cpus_active, 1) == 1)) {
-		if (pm_suspend_devices()) {
-			pm_resume_devices();
-			z_power_states[id].state = PM_STATE_ACTIVE;
-			(void)atomic_add(&z_cpus_active, 1);
-			SYS_PORT_TRACING_FUNC_EXIT(pm, system_suspend, ticks,
-						   z_power_states[id].state);
-			ret = false;
-			goto end;
-		}
-	}
-#endif
 	/*
 	 * This function runs with interruptions locked but it is
 	 * expected the SoC to unlock them in
-	 * pm_power_state_exit_post_ops() when returning to active
+	 * pm_state_exit_post_ops() when returning to active
 	 * state. We don't want to be scheduled out yet, first we need
 	 * to send a notification about leaving the idle state. So,
 	 * we lock the scheduler here and unlock just after we have
@@ -252,24 +220,17 @@ bool pm_system_suspend(int32_t ticks)
 	/* Enter power state */
 	pm_state_notify(true);
 	atomic_set_bit(z_post_ops_required, id);
-	pm_state_set(z_power_states[id]);
+	pm_state_set(z_cpus_pm_state[id].state, z_cpus_pm_state[id].substate_id);
 	pm_stats_stop();
 
 	/* Wake up sequence starts here */
-#if CONFIG_PM_DEVICE
-	if (atomic_add(&z_cpus_active, 1) == 0) {
-		pm_resume_devices();
-	}
-#endif
-	pm_stats_update(z_power_states[id].state);
+	pm_stats_update(z_cpus_pm_state[id].state);
 	pm_system_resume();
 	k_sched_unlock();
 	SYS_PORT_TRACING_FUNC_EXIT(pm, system_suspend, ticks,
-				   z_power_states[id].state);
+				   z_cpus_pm_state[id].state);
 
-end:
-	atomic_clear_bit(z_power_states_forced, id);
-	return ret;
+	return true;
 }
 
 void pm_notifier_register(struct pm_notifier *notifier)
@@ -294,7 +255,17 @@ int pm_notifier_unregister(struct pm_notifier *notifier)
 	return ret;
 }
 
-const struct pm_state_info pm_power_state_next_get(uint8_t cpu)
+const struct pm_state_info *pm_state_next_get(uint8_t cpu)
 {
-	return z_power_states[cpu];
+	return &z_cpus_pm_state[cpu];
+}
+
+void z_pm_save_idle_exit(void)
+{
+	/* Some CPU low power states require notification at the ISR
+	 * to allow any operations that needs to be done before kernel
+	 * switches task or processes nested interrupts.
+	 * This can be simply ignored if not required.
+	 */
+	pm_system_resume();
 }

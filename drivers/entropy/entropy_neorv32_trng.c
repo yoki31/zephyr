@@ -6,13 +6,15 @@
 
 #define DT_DRV_COMPAT neorv32_trng
 
-#include <device.h>
-#include <drivers/syscon.h>
-#include <drivers/entropy.h>
-#include <pm/device.h>
-#include <sys/sys_io.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/syscon.h>
+#include <zephyr/drivers/entropy.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/sys/sys_io.h>
 
-#include <logging/log.h>
+#include <soc.h>
+
 LOG_MODULE_REGISTER(neorv32_trng, CONFIG_ENTROPY_LOG_LEVEL);
 
 /* TRNG CTRL register bits */
@@ -69,7 +71,7 @@ static int neorv32_trng_get_entropy_isr(const struct device *dev, uint8_t *buffe
 		}
 
 		/* No entropy available */
-		return 0;
+		return -ENODATA;
 	}
 
 	err = neorv32_trng_get_entropy(dev, buffer, len);
@@ -125,7 +127,7 @@ static int neorv32_trng_pm_action(const struct device *dev, enum pm_device_actio
 }
 #endif /* CONFIG_PM_DEVICE */
 
-static const struct entropy_driver_api neorv32_trng_driver_api = {
+static DEVICE_API(entropy, neorv32_trng_driver_api) = {
 	.get_entropy = neorv32_trng_get_entropy,
 	.get_entropy_isr = neorv32_trng_get_entropy_isr,
 };
@@ -139,7 +141,7 @@ static const struct entropy_driver_api neorv32_trng_driver_api = {
 	PM_DEVICE_DT_INST_DEFINE(n, neorv32_trng_pm_action);		\
 									\
 	DEVICE_DT_INST_DEFINE(n, &neorv32_trng_init,			\
-			 PM_DEVICE_DT_INST_REF(n),			\
+			 PM_DEVICE_DT_INST_GET(n),			\
 			 NULL,						\
 			 &neorv32_trng_##n##_config,			\
 			 PRE_KERNEL_1,					\

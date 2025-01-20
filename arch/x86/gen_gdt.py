@@ -75,7 +75,7 @@ ACCESS_RW = 1 << 1  # read or write permission
 
 def create_gdt_pseudo_desc(addr, size):
     """Create pseudo GDT descriptor"""
-    debug("create pseudo decriptor: %x %x" % (addr, size))
+    debug("create pseudo descriptor: %x %x" % (addr, size))
     # ...and take back one byte for the Intel god whose Ark this is...
     size = size - 1
     return struct.pack(GDT_PD_FMT, size, addr, 0)
@@ -137,7 +137,7 @@ def create_tss_entry(base, limit, dpl):
     gran = 0
 
     flags = (gran << 7) | limit_hi
-    type_byte = ((present << 7) | (dpl << 5) | type_code)
+    type_byte = (present << 7) | (dpl << 5) | type_code
 
     return struct.pack(GDT_ENT_FMT, limit_lo, base_lo, base_mid,
                        type_byte, flags, base_hi)
@@ -158,7 +158,7 @@ def parse_args():
     global args
     parser = argparse.ArgumentParser(
         description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False)
 
     parser.add_argument("-k", "--kernel", required=True,
                         help="Zephyr kernel image")
@@ -185,7 +185,7 @@ def main():
     # fault exception handling
     if "CONFIG_USERSPACE" in syms:
         num_entries = 7
-    elif "CONFIG_HW_STACK_PROTECTION" in syms:
+    elif "CONFIG_X86_STACK_PROTECTION" in syms:
         num_entries = 5
     else:
         num_entries = 3

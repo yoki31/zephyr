@@ -7,11 +7,11 @@
 #include <string.h>
 #include <zephyr/types.h>
 #include <stdbool.h>
-#include <ztest.h>
-#include <drivers/flash.h>
-#include <settings/settings.h>
+#include <zephyr/ztest.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/settings/settings.h>
 
-#include <storage/stream_flash.h>
+#include <zephyr/storage/stream_flash.h>
 
 #define BUF_LEN 512
 #define MAX_PAGE_SIZE 0x1000 /* Max supported page size to run test on */
@@ -19,13 +19,12 @@
 #define TESTBUF_SIZE (MAX_PAGE_SIZE * MAX_NUM_PAGES)
 #define SOC_NV_FLASH_NODE DT_INST(0, soc_nv_flash)
 #define FLASH_SIZE DT_REG_SIZE(SOC_NV_FLASH_NODE)
-#define FLASH_NAME DT_CHOSEN_ZEPHYR_FLASH_CONTROLLER_LABEL
 
 /* so that we don't overwrite the application when running on hw */
-#define FLASH_BASE (64*1024)
+#define FLASH_BASE (128*1024)
 #define FLASH_AVAILABLE (FLASH_SIZE-FLASH_BASE)
 
-static const struct device *fdev;
+static const struct device *const fdev = DEVICE_DT_GET(DT_CHOSEN(zephyr_flash_controller));
 static const struct flash_driver_api *api;
 static const struct flash_pages_layout *layout;
 static size_t layout_size;
@@ -38,11 +37,13 @@ static int cb_ret;
 
 static const char progress_key[] = "sf-test/progress";
 
-static uint8_t buf[BUF_LEN];
+static uint8_t generic_buf[BUF_LEN];
 static uint8_t read_buf[TESTBUF_SIZE];
 const static uint8_t write_buf[TESTBUF_SIZE] = {[0 ... TESTBUF_SIZE - 1] = 0xaa};
 static uint8_t written_pattern[TESTBUF_SIZE] = {[0 ... TESTBUF_SIZE - 1] = 0xaa};
+#if defined(CONFIG_FLASH_HAS_EXPLICIT_ERASE)
 static uint8_t erased_pattern[TESTBUF_SIZE]  = {[0 ... TESTBUF_SIZE - 1] = 0xff};
+#endif
 
 #define VERIFY_BUF(start, size, buf) \
 do { \
@@ -52,7 +53,11 @@ do { \
 } while (0)
 
 #define VERIFY_WRITTEN(start, size) VERIFY_BUF(start, size, written_pattern)
+#if defined(CONFIG_FLASH_HAS_EXPLICIT_ERASE)
 #define VERIFY_ERASED(start, size) VERIFY_BUF(start, size, erased_pattern)
+#else
+#define VERIFY_ERASED(start, size)
+#endif
 
 int stream_flash_callback(uint8_t *buf, size_t len, size_t offset)
 {
@@ -67,7 +72,15 @@ int stream_flash_callback(uint8_t *buf, size_t len, size_t offset)
 
 static void erase_flash(void)
 {
+#if defined(CONFIG_FLASH_HAS_EXPLICIT_ERASE)
 	int rc;
+#if defined(CONFIG_FLASH_HAS_NO_EXPLICIT_ERASE)
+	const struct flash_parameters *fparam = flash_get_parameters(fdev);
+
+	if (!(flash_params_get_erase_cap(fparam) & FLASH_ERASE_C_EXPLICIT)) {
+		return;
+	}
+#endif
 
 	for (int i = 0; i < MAX_NUM_PAGES; i++) {
 		rc = flash_erase(fdev,
@@ -75,6 +88,7 @@ static void erase_flash(void)
 				 layout->pages_size);
 		zassert_equal(rc, 0, "should succeed");
 	}
+#endif
 }
 
 
@@ -84,7 +98,7 @@ static void init_target(void)
 
 	/* Ensure that target is clean */
 	memset(&ctx, 0, sizeof(ctx));
-	memset(buf, 0, BUF_LEN);
+	memset(generic_buf, 0, BUF_LEN);
 
 	/* Disable callback tests */
 	cb_len = 0;
@@ -94,38 +108,41 @@ static void init_target(void)
 
 	erase_flash();
 
-	rc = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE, 0,
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN, FLASH_BASE, FLASH_AVAILABLE,
 			       stream_flash_callback);
 	zassert_equal(rc, 0, "expected success");
 }
 
-static void test_stream_flash_init(void)
+ZTEST(lib_stream_flash, test_stream_flash_init)
 {
 	int rc;
 
 	init_target();
 
 	/* End address out of range */
-	rc = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE,
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN, FLASH_BASE,
 		      FLASH_AVAILABLE + 4, NULL);
 	zassert_true(rc < 0, "should fail as size is more than available");
 
-	rc = stream_flash_init(NULL, fdev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
+	rc = stream_flash_init(NULL, fdev, generic_buf, BUF_LEN, FLASH_BASE, 0, NULL);
 	zassert_true(rc < 0, "should fail as ctx is NULL");
 
-	rc = stream_flash_init(&ctx, NULL, buf, BUF_LEN, FLASH_BASE, 0, NULL);
+	rc = stream_flash_init(&ctx, NULL, generic_buf, BUF_LEN, FLASH_BASE, 0, NULL);
 	zassert_true(rc < 0, "should fail as fdev is NULL");
 
 	rc = stream_flash_init(&ctx, fdev, NULL, BUF_LEN, FLASH_BASE, 0, NULL);
 	zassert_true(rc < 0, "should fail as buffer is NULL");
 
-	/* Entering '0' as flash size uses rest of flash. */
-	rc = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE, 0, NULL);
-	zassert_equal(rc, 0, "should succeed");
-	zassert_equal(FLASH_AVAILABLE, ctx.available, "Wrong size");
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN, FLASH_BASE, 0, NULL);
+	zassert_equal(rc, -EFAULT, "should fail as size 0");
+
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN,
+			       flash_get_write_block_size(ctx.fdev) - 1, 0, NULL);
+	zassert_equal(rc, -EFAULT, "should fail as size is not aligned to write block size ");
+	flash_get_write_block_size(ctx.fdev);
 }
 
-static void test_stream_flash_buffered_write(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write)
 {
 	int rc;
 
@@ -145,7 +162,7 @@ static void test_stream_flash_buffered_write(void)
 	VERIFY_WRITTEN(0, BUF_LEN);
 }
 
-static void test_stream_flash_buffered_write_cross_buf_border(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_cross_buf_border)
 {
 	int rc;
 
@@ -175,7 +192,7 @@ static void test_stream_flash_buffered_write_cross_buf_border(void)
 	VERIFY_WRITTEN(0, BUF_LEN * 2 + BUF_LEN / 2);
 }
 
-static void test_stream_flash_buffered_write_unaligned(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_unaligned)
 {
 	int rc;
 
@@ -192,12 +209,12 @@ static void test_stream_flash_buffered_write_unaligned(void)
 	/* 1 byte should be dumped to flash */
 	VERIFY_WRITTEN(0, 1);
 
-	rc = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE + BUF_LEN,
-			       0, stream_flash_callback);
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN, FLASH_BASE + BUF_LEN,
+			       FLASH_AVAILABLE - BUF_LEN, stream_flash_callback);
 	zassert_equal(rc, 0, "expected success");
 
 	/* Trigger verification in callback */
-	cb_buf = buf;
+	cb_buf = generic_buf;
 	cb_len = BUF_LEN - 1;
 	cb_offset = FLASH_BASE + BUF_LEN;
 
@@ -209,7 +226,7 @@ static void test_stream_flash_buffered_write_unaligned(void)
 	VERIFY_WRITTEN(BUF_LEN, BUF_LEN - 1);
 }
 
-static void test_stream_flash_buffered_write_multi_page(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_multi_page)
 {
 	int rc;
 	int num_pages = MAX_NUM_PAGES - 1;
@@ -233,14 +250,14 @@ static void test_stream_flash_buffered_write_multi_page(void)
 	VERIFY_WRITTEN(0, BUF_LEN * (num_pages + 1));
 }
 
-static void test_stream_flash_bytes_written(void)
+ZTEST(lib_stream_flash, test_stream_flash_bytes_written)
 {
 	int rc;
 	size_t offset;
 
 	init_target();
 
-	/* Verify that the offset is retained across failed downolads */
+	/* Verify that the offset is retained across failed downloads */
 	rc = stream_flash_buffered_write(&ctx, write_buf, BUF_LEN + 128, false);
 	zassert_equal(rc, 0, "expected success");
 
@@ -259,16 +276,16 @@ static void test_stream_flash_bytes_written(void)
 	VERIFY_WRITTEN(BUF_LEN, BUF_LEN);
 }
 
-static void test_stream_flash_buf_size_greater_than_page_size(void)
+ZTEST(lib_stream_flash, test_stream_flash_buf_size_greater_than_page_size)
 {
 	int rc;
 
 	/* To illustrate that other params does not trigger error */
-	rc = stream_flash_init(&ctx, fdev, buf, 0x10, 0, 0, NULL);
+	rc = stream_flash_init(&ctx, fdev, generic_buf, 0x10, 0, FLASH_AVAILABLE, NULL);
 	zassert_equal(rc, 0, "expected success");
 
 	/* Only change buf_len param */
-	rc = stream_flash_init(&ctx, fdev, buf, 0x10000, 0, 0, NULL);
+	rc = stream_flash_init(&ctx, fdev, generic_buf, 0x10000, 0, FLASH_AVAILABLE, NULL);
 	zassert_true(rc < 0, "expected failure");
 }
 
@@ -287,14 +304,14 @@ static int bad_write(const struct device *dev, off_t off, const void *data, size
 	return -EINVAL;
 }
 
-static void test_stream_flash_buffered_write_callback(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_callback)
 {
 	int rc;
 
 	init_target();
 
 	/* Trigger verification in callback */
-	cb_buf = buf;
+	cb_buf = generic_buf;
 	cb_len = BUF_LEN;
 	cb_offset = FLASH_BASE;
 
@@ -338,7 +355,7 @@ static void test_stream_flash_buffered_write_callback(void)
 	fake_api.write = fake_write;
 	fake_dev.api = &fake_api;
 	bad_ctx.fdev = &fake_dev;
-	/* Triger erase attempt */
+	/* Trigger erase attempt */
 	cmp_ctx = bad_ctx;
 	/* Just flush buffer */
 	rc = stream_flash_buffered_write(&bad_ctx, write_buf, 0, true);
@@ -366,19 +383,19 @@ static void test_stream_flash_buffered_write_callback(void)
 		      "Expected %d bytes added to buffer", tow);
 }
 
-static void test_stream_flash_flush(void)
+ZTEST(lib_stream_flash, test_stream_flash_flush)
 {
 	int rc;
 
 	init_target();
 
-	/* Perform flush with NULL data pointer and 0 lentgth */
+	/* Perform flush with NULL data pointer and 0 length */
 	rc = stream_flash_buffered_write(&ctx, NULL, 0, true);
 	zassert_equal(rc, 0, "expected success");
 }
 
 #ifdef CONFIG_STREAM_FLASH_ERASE
-static void test_stream_flash_buffered_write_whole_page(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_whole_page)
 {
 	int rc;
 
@@ -395,8 +412,8 @@ static void test_stream_flash_buffered_write_whole_page(void)
 
 	/* Reset stream_flash context */
 	memset(&ctx, 0, sizeof(ctx));
-	memset(buf, 0, BUF_LEN);
-	rc = stream_flash_init(&ctx, fdev, buf, BUF_LEN, FLASH_BASE, 0,
+	memset(generic_buf, 0, BUF_LEN);
+	rc = stream_flash_init(&ctx, fdev, generic_buf, BUF_LEN, FLASH_BASE, FLASH_AVAILABLE,
 			       stream_flash_callback);
 	zassert_equal(rc, 0, "expected success");
 
@@ -414,20 +431,20 @@ static int bad_erase(const struct device *dev, off_t offset, size_t size)
 	return -EINVAL;
 }
 
-static void test_stream_flash_erase_page(void)
+ZTEST(lib_stream_flash, test_stream_flash_erase_page)
 {
 	int rc;
 
 	init_target();
 
-	/* Write out one buf */
-	rc = stream_flash_buffered_write(&ctx, write_buf, BUF_LEN, false);
+	/* Write something to make page dirty */
+	rc = flash_write(ctx.fdev, FLASH_BASE, write_buf, BUF_LEN);
 	zassert_equal(rc, 0, "expected success");
 
 	rc = stream_flash_erase_page(&ctx, FLASH_BASE);
 	zassert_equal(rc, 0, "expected success");
 
-	VERIFY_ERASED(FLASH_BASE, page_size);
+	VERIFY_ERASED(0, page_size);
 
 	/*
 	 * Test failure in erase does not change context.
@@ -451,14 +468,33 @@ static void test_stream_flash_erase_page(void)
 	zassert_equal(memcmp(&bad_ctx, &cmp_ctx, sizeof(bad_ctx)), 0,
 		      "Ctx should not get altered");
 	zassert_equal(rc, -EINVAL, "Expected failure");
+
+	/* False dev with erase set to NULL to avoid actual erase */
+	fake_api.erase = NULL;
+	struct stream_flash_ctx range_test_ctx = {
+		.offset = 1024,
+		.available = 2048,
+		.fdev = &fake_dev,
+		.last_erased_page_start_offset = -1,
+	};
+
+	rc = stream_flash_erase_page(&range_test_ctx, 1024);
+	zassert_equal(rc, -ENOSYS, "%d No device attached - expected failure", rc);
+
+	rc = stream_flash_erase_page(&range_test_ctx, 1023);
+	zassert_equal(rc, -ERANGE, "Expected failure - offset before designated area");
+
+	rc = stream_flash_erase_page(&range_test_ctx,
+				     range_test_ctx.offset + range_test_ctx.available + 1);
+	zassert_equal(rc, -ERANGE, "Expected failure - offset after designated area");
 }
 #else
-static void test_stream_flash_erase_page(void)
+ZTEST(lib_stream_flash, test_stream_flash_erase_page)
 {
 	ztest_test_skip();
 }
 
-static void test_stream_flash_buffered_write_whole_page(void)
+ZTEST(lib_stream_flash, test_stream_flash_buffered_write_whole_page)
 {
 	ztest_test_skip();
 }
@@ -498,7 +534,7 @@ static size_t load_progress(const char *load_key)
 	return stream_flash_bytes_written(&ctx);
 }
 
-static void test_stream_flash_progress_api(void)
+ZTEST(lib_stream_flash, test_stream_flash_progress_api)
 {
 	int rc;
 
@@ -538,7 +574,7 @@ static void test_stream_flash_progress_api(void)
 	zassert_equal(rc, 0, "expected success");
 }
 
-static void test_stream_flash_progress_resume(void)
+ZTEST(lib_stream_flash, test_stream_flash_progress_resume)
 {
 	int rc;
 	size_t bytes_written_old;
@@ -589,7 +625,7 @@ static void test_stream_flash_progress_resume(void)
 	bytes_written = load_progress(progress_key);
 	zassert_equal(bytes_written, bytes_written_old,
 		      "expected bytes_written to be loaded");
-#ifdef CONFIG_STREAM_FLASH_ERASE
+#if defined(CONFIG_STREAM_FLASH_ERASE)
 	zassert_equal(erase_offset_old, ctx.last_erased_page_start_offset,
 		      "expected last erased page offset to be loaded");
 #endif
@@ -604,7 +640,7 @@ static void test_stream_flash_progress_resume(void)
 		      "expected bytes_written to not be overwritten");
 }
 
-static void test_stream_flash_progress_clear(void)
+ZTEST(lib_stream_flash, test_stream_flash_progress_clear)
 {
 	int rc;
 	size_t bytes_written_old;
@@ -644,31 +680,15 @@ static void test_stream_flash_progress_clear(void)
 #endif
 }
 
-void test_main(void)
+void lib_stream_flash_before(void *data)
 {
-	fdev = device_get_binding(FLASH_NAME);
+	zassume_true(device_is_ready(fdev), "Device is not ready");
+
 	api = fdev->api;
 	api->page_layout(fdev, &layout, &layout_size);
 
 	page_size = layout->pages_size;
-	__ASSERT_NO_MSG(page_size > BUF_LEN);
-
-	ztest_test_suite(lib_stream_flash_test,
-	     ztest_unit_test(test_stream_flash_init),
-	     ztest_unit_test(test_stream_flash_buffered_write),
-	     ztest_unit_test(test_stream_flash_buffered_write_cross_buf_border),
-	     ztest_unit_test(test_stream_flash_buffered_write_unaligned),
-	     ztest_unit_test(test_stream_flash_buffered_write_multi_page),
-	     ztest_unit_test(test_stream_flash_buf_size_greater_than_page_size),
-	     ztest_unit_test(test_stream_flash_buffered_write_callback),
-	     ztest_unit_test(test_stream_flash_flush),
-	     ztest_unit_test(test_stream_flash_buffered_write_whole_page),
-	     ztest_unit_test(test_stream_flash_erase_page),
-	     ztest_unit_test(test_stream_flash_bytes_written),
-	     ztest_unit_test(test_stream_flash_progress_api),
-	     ztest_unit_test(test_stream_flash_progress_resume),
-	     ztest_unit_test(test_stream_flash_progress_clear)
-	 );
-
-	ztest_run_test_suite(lib_stream_flash_test);
+	zassume_true((page_size > BUF_LEN), "page size is not enough");
 }
+
+ZTEST_SUITE(lib_stream_flash, NULL, NULL, lib_stream_flash_before, NULL, NULL);

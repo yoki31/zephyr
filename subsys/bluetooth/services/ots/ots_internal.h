@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Nordic Semiconductor ASA
+ * Copyright (c) 2020-2022 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -16,10 +16,57 @@ extern "C" {
 #include "ots_oacp_internal.h"
 #include "ots_olcp_internal.h"
 
-/** Maximum size of the Directory Listing Object Record. Table 4.1 in the OTS spec. */
-#define DIR_LIST_OBJ_RECORD_MIN_SIZE       13
-#define DIR_LIST_OBJ_RECORD_MAX_SIZE       172
-#define DIR_LIST_MAX_SIZE (DIR_LIST_OBJ_RECORD_MAX_SIZE * CONFIG_BT_OTS_MAX_OBJ_CNT)
+/**
+ * Both OACP and OLCP have same max size of 7 bytes
+ *
+ * Table 3.10: Format of OACP Response Value
+ * OACP Response Value contains
+ * 1 octet Procedure code
+ * 1 octet Request op code
+ * 1 octet Result Code
+ * 4 octet CRC checksum (if present)
+ *
+ * Table 3.24: Format of the OLCP Response Value
+ * 1 octet Procedure code
+ * 1 octet Request op code
+ * 1 octet Result Code
+ * 0 or 4 octets Response Parameter
+ *
+ **/
+#define OACP_OLCP_RES_MAX_SIZE	7
+
+#define BT_OTS_VALID_OBJ_ID(id) (IN_RANGE((id), BT_OTS_OBJ_ID_MIN, BT_OTS_OBJ_ID_MAX) || \
+				 (id) == OTS_OBJ_ID_DIR_LIST)
+
+#define BT_OTS_SET_METADATA_REQ_NAME(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_NAME)
+#define BT_OTS_SET_METADATA_REQ_TYPE(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_TYPE)
+#define BT_OTS_SET_METADATA_REQ_SIZE(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_SIZE)
+#define BT_OTS_SET_METADATA_REQ_CREATED(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_CREATED)
+#define BT_OTS_SET_METADATA_REQ_MODIFIED(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_MODIFIED)
+#define BT_OTS_SET_METADATA_REQ_ID(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_ID)
+#define BT_OTS_SET_METADATA_REQ_PROPS(metadata) \
+	((metadata) = (metadata) | BT_OTS_METADATA_REQ_PROPS)
+
+#define BT_OTS_GET_METADATA_REQ_NAME(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_NAME)
+#define BT_OTS_GET_METADATA_REQ_TYPE(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_TYPE)
+#define BT_OTS_GET_METADATA_REQ_SIZE(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_SIZE)
+#define BT_OTS_GET_METADATA_REQ_CREATED(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_CREATED)
+#define BT_OTS_GET_METADATA_REQ_MODIFIED(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_MODIFIED)
+#define BT_OTS_GET_METADATA_REQ_ID(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_ID)
+#define BT_OTS_GET_METADATA_REQ_PROPS(metadata) \
+	((metadata) & BT_OTS_METADATA_REQ_PROPS)
 
 /**@brief OTS Attribute Protocol Application Error codes. */
 enum bt_gatt_ots_att_err_codes {
@@ -64,21 +111,6 @@ struct bt_gatt_ots_object_state {
 	};
 };
 
-/** @brief Descriptor for OTS object initialization. */
-struct bt_ots_obj_metadata {
-	/* Object Name */
-	char                   *name;
-
-	/* Object Type */
-	struct bt_ots_obj_type type;
-
-	/* Object Size */
-	struct bt_ots_obj_size size;
-
-	/* Object Properties */
-	uint32_t               props;
-};
-
 struct bt_gatt_ots_object {
 	uint64_t id;
 	struct bt_ots_obj_metadata metadata;
@@ -90,6 +122,8 @@ struct bt_gatt_ots_indicate {
 	struct bt_gatt_attr attr;
 	struct _bt_gatt_ccc ccc;
 	bool is_enabled;
+	struct k_work work;
+	uint8_t res[OACP_OLCP_RES_MAX_SIZE];
 };
 
 struct bt_ots {

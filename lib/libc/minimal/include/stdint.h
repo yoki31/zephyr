@@ -30,6 +30,36 @@ extern "C" {
 #define UINT64_MAX  __UINT64_MAX__
 #define UINTMAX_MAX __UINT64_MAX__
 
+#define INT_FAST8_MAX    __INT_FAST8_MAX__
+#define INT_FAST16_MAX   __INT_FAST16_MAX__
+#define INT_FAST32_MAX   __INT_FAST32_MAX__
+#define INT_FAST64_MAX   __INT_FAST64_MAX__
+
+#define INT_FAST8_MIN    (-INT_FAST8_MAX - 1)
+#define INT_FAST16_MIN   (-INT_FAST16_MAX - 1)
+#define INT_FAST32_MIN   (-INT_FAST32_MAX - 1)
+#define INT_FAST64_MIN   (-INT_FAST64_MAX - 1LL)
+
+#define UINT_FAST8_MAX    __UINT_FAST8_MAX__
+#define UINT_FAST16_MAX   __UINT_FAST16_MAX__
+#define UINT_FAST32_MAX   __UINT_FAST32_MAX__
+#define UINT_FAST64_MAX   __UINT_FAST64_MAX__
+
+#define INT_LEAST8_MAX    __INT_LEAST8_MAX__
+#define INT_LEAST16_MAX   __INT_LEAST16_MAX__
+#define INT_LEAST32_MAX   __INT_LEAST32_MAX__
+#define INT_LEAST64_MAX   __INT_LEAST64_MAX__
+
+#define INT_LEAST8_MIN    (-INT_LEAST8_MAX - 1)
+#define INT_LEAST16_MIN   (-INT_LEAST16_MAX - 1)
+#define INT_LEAST32_MIN   (-INT_LEAST32_MAX - 1)
+#define INT_LEAST64_MIN   (-INT_LEAST64_MAX - 1LL)
+
+#define UINT_LEAST8_MAX    __UINT_LEAST8_MAX__
+#define UINT_LEAST16_MAX   __UINT_LEAST16_MAX__
+#define UINT_LEAST32_MAX   __UINT_LEAST32_MAX__
+#define UINT_LEAST64_MAX   __UINT_LEAST64_MAX__
+
 #define INTPTR_MAX  __INTPTR_MAX__
 #define INTPTR_MIN  (-INTPTR_MAX - 1)
 #define UINTPTR_MAX __UINTPTR_MAX__
@@ -74,7 +104,7 @@ typedef __UINT_LEAST64_TYPE__	uint_least64_t;
 typedef __INTPTR_TYPE__		intptr_t;
 typedef __UINTPTR_TYPE__	uintptr_t;
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 /* These macros must produce constant integer expressions, which can't
  * be done in the preprocessor (casts aren't allowed).  Defer to the
  * GCC internal functions where they're available.
@@ -90,7 +120,7 @@ typedef __UINTPTR_TYPE__	uintptr_t;
 #define UINT32_C(_v) __UINT32_C(_v)
 #define UINT64_C(_v) __UINT64_C(_v)
 #define UINTMAX_C(_v) __UINTMAX_C(_v)
-#endif /* __GNUC__ */
+#endif /* defined(__GNUC__) || defined(__clang__) */
 
 #ifdef __CCAC__
 #ifndef __INT8_C

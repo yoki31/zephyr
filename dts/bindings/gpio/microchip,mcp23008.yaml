@@ -1,26 +1,11 @@
 #
-# Copyright (c) 2021 metraTec GmbH
+# Copyright (c) 2024 SILA Embedded Solutions GmbH
 #
 # SPDX-License-Identifier: Apache-2.0
 #
 
-description: |
-    This is a representation of the Microchip MCP23008 I2C Gpio Expander.
+description: This is a representation of the Microchip MCP23008 I2C GPIO Expander.
 
 compatible: "microchip,mcp23008"
 
-include: [gpio-controller.yaml, i2c-device.yaml]
-
-properties:
-    label:
-      required: true
-
-    ngpios:
-      const: 8
-      required: true
-      description: |
-        Number of gpios supported by the chip.
-
-gpio-cells:
-  - pin
-  - flags
+include: ["microchip,mcp23xxx.yaml", i2c-device.yaml]

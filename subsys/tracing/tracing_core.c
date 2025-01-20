@@ -9,11 +9,11 @@
  */
 #define DISABLE_SYSCALL_TRACING
 
-#include <init.h>
+#include <zephyr/init.h>
 #include <string.h>
-#include <kernel.h>
-#include <sys/util.h>
-#include <sys/atomic.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/sys/atomic.h>
 #include <tracing_core.h>
 #include <tracing_buffer.h>
 #include <tracing_backend.h>
@@ -29,6 +29,8 @@
 #define TRACING_BACKEND_NAME "tracing_backend_posix"
 #elif defined CONFIG_TRACING_BACKEND_RAM
 #define TRACING_BACKEND_NAME "tracing_backend_ram"
+#elif defined CONFIG_TRACING_BACKEND_ADSP_MEMORY_WINDOW
+#define TRACING_BACKEND_NAME "tracing_backend_adsp_memory_window"
 #else
 #define TRACING_BACKEND_NAME ""
 #endif
@@ -87,9 +89,8 @@ static void tracing_set_state(enum tracing_state state)
 	atomic_set(&tracing_state, state);
 }
 
-static int tracing_init(const struct device *arg)
+static int tracing_init(void)
 {
-	ARG_UNUSED(arg);
 
 	tracing_buffer_init();
 

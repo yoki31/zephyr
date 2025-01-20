@@ -7,6 +7,7 @@
 #   elfconvert_flag_final         : empty
 #   elfconvert_flag_strip_all     : -S
 #   elfconvert_flag_strip_debug   : -g
+#   elfconvert_flag_compress_debug_sections: --compress-debug-sections
 #   elfconvert_flag_intarget      : --input-target=
 #   elfconvert_flag_outtarget     : --output-target=
 #   elfconvert_flag_section_remove: --remove-section=
@@ -25,7 +26,7 @@
 set_property(TARGET bintools PROPERTY elfconvert_command ${CMAKE_OBJCOPY})
 
 # List of format the tool supports for converting, for example,
-# GNU tools uses objectcopyy, which supports the following: ihex, srec, binary
+# GNU tools uses objectcopy, which supports the following: ihex, srec, binary
 set_property(TARGET bintools PROPERTY elfconvert_formats ihex srec binary)
 
 set_property(TARGET bintools PROPERTY elfconvert_flag "")
@@ -34,6 +35,8 @@ set_property(TARGET bintools PROPERTY elfconvert_flag_final "")
 set_property(TARGET bintools PROPERTY elfconvert_flag_strip_all "-S")
 set_property(TARGET bintools PROPERTY elfconvert_flag_strip_debug "-g")
 
+set_property(TARGET bintools PROPERTY elfconvert_flag_compress_debug_sections "--compress-debug-sections")
+
 set_property(TARGET bintools PROPERTY elfconvert_flag_intarget "--input-target=")
 set_property(TARGET bintools PROPERTY elfconvert_flag_outtarget "--output-target=")
 
@@ -41,11 +44,10 @@ set_property(TARGET bintools PROPERTY elfconvert_flag_section_remove "--remove-s
 set_property(TARGET bintools PROPERTY elfconvert_flag_section_only "--only-section=")
 set_property(TARGET bintools PROPERTY elfconvert_flag_section_rename "--rename-section;")
 
-# Note, placing a ';' at the end results in the following param  to be a list,
-# and hence space separated.
-# Thus the command line argument becomes:
-# `--gap-file <value>` instead of `--gap-fill<value>` (The latter would result in an error)
-set_property(TARGET bintools PROPERTY elfconvert_flag_gapfill "--gap-fill;")
+set_property(TARGET bintools PROPERTY elfconvert_flag_lma_adjust "--change-section-lma;")
+
+# llvm-objcopy doesn't support gap fill argument.
+set_property(TARGET bintools PROPERTY elfconvert_flag_gapfill "")
 set_property(TARGET bintools PROPERTY elfconvert_flag_srec_len "--srec-len=")
 
 set_property(TARGET bintools PROPERTY elfconvert_flag_infile "")
@@ -69,6 +71,18 @@ set_property(TARGET bintools PROPERTY disassembly_flag_all "")
 
 set_property(TARGET bintools PROPERTY disassembly_flag_infile "")
 set_property(TARGET bintools PROPERTY disassembly_flag_outfile ">;" )
+
+#
+# - symbols : Name of command for printing out symbols
+#   symbols_command         : empty
+#   symbols_final   : empty
+#   symbols_infile  : ELF file name
+#   symbols_outfile : output file
+set_property(TARGET bintools PROPERTY symbols_command ${CMAKE_NM})
+set_property(TARGET bintools PROPERTY symbols_flag "")
+set_property(TARGET bintools PROPERTY symbols_final "")
+set_property(TARGET bintools PROPERTY symbols_infile "")
+set_property(TARGET bintools PROPERTY symbols_outfile ">;" )
 
 #
 # - strip: Name of command for stripping symbols

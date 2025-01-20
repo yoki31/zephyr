@@ -8,25 +8,23 @@
 #ifndef _MCP2515_H_
 #define _MCP2515_H_
 
-#include <drivers/can.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/can.h>
 
 #define MCP2515_RX_CNT                   2
-#define MCP2515_TX_CNT                   3
+/* Reduce the number of Tx buffers to 1 in order to avoid priority inversion. */
+#define MCP2515_TX_CNT                   1
 #define MCP2515_FRAME_LEN               13
 
-#define DEV_CFG(dev) \
-	((const struct mcp2515_config *const)(dev)->config)
-#define DEV_DATA(dev) ((struct mcp2515_data *const)(dev)->data)
-
 struct mcp2515_tx_cb {
-	struct k_sem sem;
 	can_tx_callback_t cb;
 	void *cb_arg;
 };
 
 struct mcp2515_data {
+	struct can_driver_data common;
+
 	/* interrupt data */
-	const struct device *int_gpio;
 	struct gpio_callback int_gpio_cb;
 	struct k_thread int_thread;
 	k_thread_stack_t *int_thread_stack;
@@ -41,33 +39,27 @@ struct mcp2515_data {
 	uint32_t filter_usage;
 	can_rx_callback_t rx_cb[CONFIG_CAN_MAX_FILTER];
 	void *cb_arg[CONFIG_CAN_MAX_FILTER];
-	struct zcan_filter filter[CONFIG_CAN_MAX_FILTER];
-	can_state_change_isr_t state_change_isr;
+	struct can_filter filter[CONFIG_CAN_MAX_FILTER];
 
 	/* general data */
 	struct k_mutex mutex;
 	enum can_state old_state;
-	uint8_t sjw;
+	uint8_t mcp2515_mode;
 };
 
 struct mcp2515_config {
+	const struct can_driver_config common;
+
 	/* spi configuration */
 	struct spi_dt_spec bus;
 
 	/* interrupt configuration */
-	uint8_t int_pin;
-	const char *int_port;
+	struct gpio_dt_spec int_gpio;
 	size_t int_thread_stack_size;
 	int int_thread_priority;
 
 	/* CAN timing */
-	uint8_t tq_sjw;
-	uint8_t tq_prop;
-	uint8_t tq_bs1;
-	uint8_t tq_bs2;
-	uint32_t bus_speed;
 	uint32_t osc_freq;
-	uint16_t sample_point;
 };
 
 /*
@@ -154,5 +146,7 @@ struct mcp2515_config {
 #define MCP2515_CANSTAT_MODE_MASK		(0x07 << MCP2515_CANSTAT_MODE_POS)
 #define MCP2515_CANCTRL_MODE_POS		5
 #define MCP2515_CANCTRL_MODE_MASK		(0x07 << MCP2515_CANCTRL_MODE_POS)
+#define MCP2515_TXBNCTRL_TXREQ_POS		3
+#define MCP2515_TXBNCTRL_TXREQ_MASK		(0x01 << MCP2515_TXBNCTRL_TXREQ_POS)
 
 #endif /*_MCP2515_H_*/

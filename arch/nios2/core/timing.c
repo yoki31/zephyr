@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <kernel.h>
-#include <sys_clock.h>
-#include <timing/timing.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys_clock.h>
+#include <zephyr/timing/timing.h>
 #include "altera_avalon_timer_regs.h"
 
 #define NIOS2_SUBTRACT_CLOCK_CYCLES(val)                                       \
@@ -41,7 +41,13 @@ timing_t arch_timing_counter_get(void)
 uint64_t arch_timing_cycles_get(volatile timing_t *const start,
 				volatile timing_t *const end)
 {
-	return (*end - *start);
+	timing_t start_ = *start;
+	timing_t end_ = *end;
+
+	if (end_ >= start_) {
+		return (end_ - start_);
+	}
+	return (end_ + NIOS2_SUBTRACT_CLOCK_CYCLES(start_));
 }
 
 uint64_t arch_timing_freq_get(void)

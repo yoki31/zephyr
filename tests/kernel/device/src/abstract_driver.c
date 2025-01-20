@@ -4,28 +4,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <ztest.h>
-#include <device.h>
+#include <zephyr/ztest.h>
+#include <zephyr/device.h>
 #include "abstract_driver.h"
 
 #define MY_DRIVER_A	"my_driver_A"
 #define MY_DRIVER_B	"my_driver_B"
 
-/* define indivial driver A */
-static int my_driver_A_do_this(const struct device *device, int foo, int bar)
+/* define individual driver A */
+static int my_driver_A_do_this(const struct device *dev, int foo, int bar)
 {
 	return foo + bar;
 }
 
-static void my_driver_A_do_that(const struct device *device,
-				unsigned int *baz)
+static void my_driver_A_do_that(const struct device *dev, unsigned int *baz)
 {
 	*baz = 1;
 }
 
-static struct subsystem_api my_driver_A_api_funcs = {
+static DEVICE_API(abstract, my_driver_A_api_funcs) = {
 	.do_this = my_driver_A_do_this,
-	.do_that = my_driver_A_do_that
+	.do_that = my_driver_A_do_that,
 };
 
 int common_driver_init(const struct device *dev)
@@ -33,21 +32,20 @@ int common_driver_init(const struct device *dev)
 	return 0;
 }
 
-/* define indivial driver B */
-static int my_driver_B_do_this(const struct device *device, int foo, int bar)
+/* define individual driver B */
+static int my_driver_B_do_this(const struct device *dev, int foo, int bar)
 {
 	return foo - bar;
 }
 
-static void my_driver_B_do_that(const struct device *device,
-				unsigned int *baz)
+static void my_driver_B_do_that(const struct device *dev, unsigned int *baz)
 {
 	*baz = 2;
 }
 
-static struct subsystem_api my_driver_B_api_funcs = {
+static DEVICE_API(abstract, my_driver_B_api_funcs) = {
 	.do_this = my_driver_B_do_this,
-	.do_that = my_driver_B_do_that
+	.do_that = my_driver_B_do_that,
 };
 
 /**

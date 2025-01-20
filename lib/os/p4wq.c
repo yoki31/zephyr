@@ -3,14 +3,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <logging/log.h>
-#include <sys/p4wq.h>
-#include <wait_q.h>
-#include <kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/p4wq.h>
+#include <zephyr/kernel.h>
+#include <zephyr/init.h>
+#include <zephyr/sys/iterable_sections.h>
+/* private kernel APIs */
 #include <ksched.h>
-#include <init.h>
+#include <wait_q.h>
 
-LOG_MODULE_REGISTER(p4wq);
+LOG_MODULE_REGISTER(p4wq, CONFIG_LOG_DEFAULT_LEVEL);
 
 struct device;
 
@@ -139,9 +141,8 @@ void k_p4wq_add_thread(struct k_p4wq *queue, struct k_thread *thread,
 			queue->flags & K_P4WQ_DELAYED_START ? K_FOREVER : K_NO_WAIT);
 }
 
-static int static_init(const struct device *dev)
+static int static_init(void)
 {
-	ARG_UNUSED(dev);
 
 	STRUCT_SECTION_FOREACH(k_p4wq_initparam, pp) {
 		for (int i = 0; i < pp->num; i++) {
@@ -167,16 +168,13 @@ static int static_init(const struct device *dev)
 					  &pp->stacks[ssz * i],
 					  pp->stack_size);
 
-			if (pp->flags & K_P4WQ_DELAYED_START) {
-				z_mark_thread_as_suspended(&pp->threads[i]);
-			}
-
 #ifdef CONFIG_SCHED_CPU_MASK
 			if (pp->flags & K_P4WQ_USER_CPU_MASK) {
 				int ret = k_thread_cpu_mask_clear(&pp->threads[i]);
 
-				if (ret < 0)
+				if (ret < 0) {
 					LOG_ERR("Couldn't clear CPU mask: %d", ret);
+				}
 			}
 #endif
 		}
@@ -195,15 +193,15 @@ void k_p4wq_enable_static_thread(struct k_p4wq *queue, struct k_thread *thread,
 		while ((i = find_lsb_set(cpu_mask))) {
 			int ret = k_thread_cpu_mask_enable(thread, i - 1);
 
-			if (ret < 0)
+			if (ret < 0) {
 				LOG_ERR("Couldn't set CPU mask for %u: %d", i, ret);
+			}
 			cpu_mask &= ~BIT(i - 1);
 		}
 	}
 #endif
 
 	if (queue->flags & K_P4WQ_DELAYED_START) {
-		z_mark_thread_as_not_suspended(thread);
 		k_thread_start(thread);
 	}
 }
@@ -251,7 +249,7 @@ void k_p4wq_submit(struct k_p4wq *queue, struct k_p4wq_work *item)
 	 * preempted and we can return.
 	 */
 	struct k_p4wq_work *wi;
-	uint32_t n_beaten_by = 0, active_target = CONFIG_MP_NUM_CPUS;
+	uint32_t n_beaten_by = 0, active_target = arch_num_cpus();
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&queue->active, wi, dlnode) {
 		/*

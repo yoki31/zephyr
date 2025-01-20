@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #
 # Copyright (c) 2021 Intel Corporation
+# Copyright (c) 2024 Nordic Semiconductor ASA
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -17,8 +18,7 @@ import logging
 import sys
 
 import dictionary_parser
-from dictionary_parser.log_database import LogDatabase
-
+import parserlib
 
 LOGGER_FORMAT = "%(message)s"
 logger = logging.getLogger("parser")
@@ -28,7 +28,7 @@ LOG_HEX_SEP = "##ZLOGV1##"
 
 def parse_args():
     """Parse command line arguments"""
-    argparser = argparse.ArgumentParser()
+    argparser = argparse.ArgumentParser(allow_abbrev=False)
 
     argparser.add_argument("dbfile", help="Dictionary Logging Database file")
     argparser.add_argument("logfile", help="Log Data file")
@@ -42,22 +42,12 @@ def parse_args():
     return argparser.parse_args()
 
 
-def main():
-    """Main function of log parser"""
-    args = parse_args()
-
-    # Setup logging for parser
-    logging.basicConfig(format=LOGGER_FORMAT)
-    if args.debug:
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-
-    # Read from database file
-    database = LogDatabase.read_json_database(args.dbfile)
-    if database is None:
-        logger.error("ERROR: Cannot open database file: %s, exiting...", args.dbfile)
-        sys.exit(1)
+def read_log_file(args):
+    """
+    Read the log from file
+    """
+    logdata = None
+    hexdata = ''
 
     # Open log data file for reading
     if args.hex:
@@ -67,7 +57,7 @@ def main():
         else:
             hexdata = ''
 
-            with open(args.logfile, "r") as hexfile:
+            with open(args.logfile, "r", encoding="iso-8859-1") as hexfile:
                 for line in hexfile.readlines():
                     hexdata += line.strip()
 
@@ -109,23 +99,25 @@ def main():
 
         logfile.close()
 
-    log_parser = dictionary_parser.get_parser(database)
-    if log_parser is not None:
-        logger.debug("# Build ID: %s", database.get_build_id())
-        logger.debug("# Target: %s, %d-bit", database.get_arch(), database.get_tgt_bits())
-        if database.is_tgt_little_endian():
-            logger.debug("# Endianness: Little")
-        else:
-            logger.debug("# Endianness: Big")
+    return logdata
 
-        ret = log_parser.parse_log_data(logdata, debug=args.debug)
-        if not ret:
-            logger.error("ERROR: there were error(s) parsing log data")
-            sys.exit(1)
+def main():
+    """Main function of log parser"""
+    args = parse_args()
+
+    # Setup logging for parser
+    logging.basicConfig(format=LOGGER_FORMAT)
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
     else:
-        logger.error("ERROR: Cannot find a suitable parser matching database version!")
+        logger.setLevel(logging.INFO)
+
+    logdata = read_log_file(args)
+    if logdata is None:
+        logger.error("ERROR: cannot read log from file: %s, exiting...", args.logfile)
         sys.exit(1)
 
+    parserlib.parser(logdata, args.dbfile, logger)
 
 if __name__ == "__main__":
     main()

@@ -20,12 +20,13 @@
  *      Version 2.0 available at www.apache.org/licenses/LICENSE-2.0.
  */
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(modbus_serial, CONFIG_MODBUS_LOG_LEVEL);
 
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <string.h>
-#include <sys/byteorder.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/crc.h>
 #include <modbus_internal.h>
 
 static void modbus_serial_tx_on(struct modbus_context *ctx)
@@ -238,37 +239,6 @@ static void modbus_ascii_tx_adu(struct modbus_context *ctx)
 }
 #endif
 
-static uint16_t modbus_rtu_crc16(uint8_t *src, size_t length)
-{
-	uint16_t crc = 0xFFFF;
-	uint8_t shiftctr;
-	bool flag;
-	uint8_t *pblock = src;
-
-	while (length > 0) {
-		length--;
-		crc ^= (uint16_t)*pblock++;
-		shiftctr = 8;
-		do {
-			/* Determine if the shift out of rightmost bit is 1 */
-			flag = (crc & 0x0001) ? true : false;
-			/* Shift CRC to the right one bit. */
-			crc >>= 1;
-			/*
-			 * If bit shifted out of rightmost bit was a 1
-			 * exclusive OR the CRC with the generating polynomial.
-			 */
-			if (flag == true) {
-				crc ^= MODBUS_CRC16_POLY;
-			}
-
-			shiftctr--;
-		} while (shiftctr > 0);
-	}
-
-	return crc;
-}
-
 /* Copy Modbus RTU frame and check if the CRC is valid. */
 static int modbus_rtu_rx_adu(struct modbus_context *ctx)
 {
@@ -296,8 +266,8 @@ static int modbus_rtu_rx_adu(struct modbus_context *ctx)
 
 	ctx->rx_adu.crc = sys_get_le16(&cfg->uart_buf[crc_idx]);
 	/* Calculate CRC over address, function code, and payload */
-	calc_crc = modbus_rtu_crc16(&cfg->uart_buf[0],
-				    cfg->uart_buf_ctr - sizeof(ctx->rx_adu.crc));
+	calc_crc = crc16_ansi(&cfg->uart_buf[0],
+			      cfg->uart_buf_ctr - sizeof(ctx->rx_adu.crc));
 
 	if (ctx->rx_adu.crc != calc_crc) {
 		LOG_WRN("Calculated CRC does not match received CRC");
@@ -320,8 +290,7 @@ static void rtu_tx_adu(struct modbus_context *ctx)
 
 	memcpy(data_ptr, ctx->tx_adu.data, ctx->tx_adu.length);
 
-	ctx->tx_adu.crc = modbus_rtu_crc16(&cfg->uart_buf[0],
-					     ctx->tx_adu.length + 2);
+	ctx->tx_adu.crc = crc16_ansi(&cfg->uart_buf[0], ctx->tx_adu.length + 2);
 	sys_put_le16(ctx->tx_adu.crc,
 		     &cfg->uart_buf[ctx->tx_adu.length + 2]);
 	tx_bytes += 2;
@@ -370,6 +339,12 @@ static void cb_handler_rx(struct modbus_context *ctx)
 	} else {
 		int n;
 
+		if (cfg->uart_buf_ctr == CONFIG_MODBUS_BUFFER_SIZE) {
+			/* Buffer full. Disable interrupt until timeout. */
+			modbus_serial_rx_disable(ctx);
+			return;
+		}
+
 		/* Restart timer on a new character */
 		k_timer_start(&cfg->rtu_timer,
 			      K_USEC(cfg->rtu_timeout), K_NO_WAIT);
@@ -393,7 +368,14 @@ static void cb_handler_tx(struct modbus_context *ctx)
 				   cfg->uart_buf_ctr);
 		cfg->uart_buf_ctr -= n;
 		cfg->uart_buf_ptr += n;
-	} else {
+		return;
+	}
+
+	/* Must wait till the transmission is complete or
+	 * RS-485 transceiver could be disabled before all data has
+	 * been transmitted and message will be corrupted.
+	 */
+	if (uart_irq_tx_complete(cfg->dev)) {
 		/* Disable transmission */
 		cfg->uart_buf_ptr = &cfg->uart_buf[0];
 		modbus_serial_tx_off(ctx);
@@ -404,22 +386,19 @@ static void cb_handler_tx(struct modbus_context *ctx)
 static void uart_cb_handler(const struct device *dev, void *app_data)
 {
 	struct modbus_context *ctx = (struct modbus_context *)app_data;
-	struct modbus_serial_config *cfg;
 
 	if (ctx == NULL) {
 		LOG_ERR("Modbus hardware is not properly initialized");
 		return;
 	}
 
-	cfg = ctx->cfg;
+	if (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
 
-	while (uart_irq_update(cfg->dev) && uart_irq_is_pending(cfg->dev)) {
-
-		if (uart_irq_rx_ready(cfg->dev)) {
+		if (uart_irq_rx_ready(dev)) {
 			cb_handler_rx(ctx);
 		}
 
-		if (uart_irq_tx_ready(cfg->dev)) {
+		if (uart_irq_tx_ready(dev)) {
 			cb_handler_tx(ctx);
 		}
 	}
@@ -463,6 +442,58 @@ static int configure_gpio(struct modbus_context *ctx)
 		if (gpio_pin_configure_dt(cfg->re, GPIO_OUTPUT_INACTIVE)) {
 			return -EIO;
 		}
+	}
+
+	return 0;
+}
+
+static inline int configure_uart(struct modbus_context *ctx,
+				 struct modbus_iface_param *param)
+{
+	struct modbus_serial_config *cfg = ctx->cfg;
+	struct uart_config uart_cfg = {
+		.baudrate = param->serial.baud,
+		.flow_ctrl = UART_CFG_FLOW_CTRL_NONE,
+	};
+
+	if (ctx->mode == MODBUS_MODE_ASCII) {
+		uart_cfg.data_bits = UART_CFG_DATA_BITS_7;
+	} else {
+		uart_cfg.data_bits = UART_CFG_DATA_BITS_8;
+	}
+
+	switch (param->serial.parity) {
+	case UART_CFG_PARITY_ODD:
+	case UART_CFG_PARITY_EVEN:
+		uart_cfg.parity = param->serial.parity;
+		uart_cfg.stop_bits = UART_CFG_STOP_BITS_1;
+		break;
+	case UART_CFG_PARITY_NONE:
+		/* Use of no parity requires 2 stop bits */
+		uart_cfg.parity = param->serial.parity;
+		uart_cfg.stop_bits = UART_CFG_STOP_BITS_2;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (ctx->client) {
+		/* Allow custom stop bit settings only in client mode */
+		switch (param->serial.stop_bits_client) {
+		case UART_CFG_STOP_BITS_0_5:
+		case UART_CFG_STOP_BITS_1:
+		case UART_CFG_STOP_BITS_1_5:
+		case UART_CFG_STOP_BITS_2:
+			uart_cfg.stop_bits = param->serial.stop_bits_client;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	if (uart_configure(cfg->dev, &uart_cfg) != 0) {
+		LOG_ERR("Failed to configure UART");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -529,7 +560,6 @@ int modbus_serial_init(struct modbus_context *ctx,
 	struct modbus_serial_config *cfg = ctx->cfg;
 	const uint32_t if_delay_max = 3500000;
 	const uint32_t numof_bits = 11;
-	struct uart_config uart_cfg;
 
 	switch (param.mode) {
 	case MODBUS_MODE_RTU:
@@ -540,40 +570,15 @@ int modbus_serial_init(struct modbus_context *ctx,
 		return -ENOTSUP;
 	}
 
-	cfg->dev = device_get_binding(cfg->dev_name);
-	if (cfg->dev == NULL) {
-		LOG_ERR("Failed to get UART device %s",
-			log_strdup(cfg->dev_name));
+	if (!device_is_ready(cfg->dev)) {
+		LOG_ERR("Bus device %s is not ready", cfg->dev->name);
 		return -ENODEV;
 	}
 
-	uart_cfg.baudrate = param.serial.baud,
-	uart_cfg.flow_ctrl = UART_CFG_FLOW_CTRL_NONE;
-
-	if (ctx->mode == MODBUS_MODE_ASCII) {
-		uart_cfg.data_bits = UART_CFG_DATA_BITS_7;
-	} else {
-		uart_cfg.data_bits = UART_CFG_DATA_BITS_8;
-	}
-
-	switch (param.serial.parity) {
-	case UART_CFG_PARITY_ODD:
-	case UART_CFG_PARITY_EVEN:
-		uart_cfg.parity = param.serial.parity;
-		uart_cfg.stop_bits = UART_CFG_STOP_BITS_1;
-		break;
-	case UART_CFG_PARITY_NONE:
-		/* Use of no parity requires 2 stop bits */
-		uart_cfg.parity = param.serial.parity;
-		uart_cfg.stop_bits = UART_CFG_STOP_BITS_2;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (uart_configure(cfg->dev, &uart_cfg) != 0) {
-		LOG_ERR("Failed to configure UART");
-		return -EINVAL;
+	if (IS_ENABLED(CONFIG_UART_USE_RUNTIME_CONFIGURE)) {
+		if (configure_uart(ctx, &param) != 0) {
+			return -EINVAL;
+		}
 	}
 
 	if (param.serial.baud <= 38400) {

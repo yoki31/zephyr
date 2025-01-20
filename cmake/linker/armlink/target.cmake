@@ -1,20 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
-# In order to ensure that the armlink symbol name is correctly passed to
-# gen_handles.py, we must first ensure that it is properly escaped.
-# For Python to work, the `$` must be passed as `\$` on command line.
-# In order to pass a single `\` to command line it must first be escaped, that is `\\`.
-# In ninja build files, a `$` is not accepted but must be passed as `$$`.
-# CMake, Python and Ninja combined results in `\\$$` in order to pass a sing `\$` to Python,
-# so `$$` thus becomes: `\\$$\\$$`.
-set_property(TARGET linker PROPERTY devices_start_symbol "Image\\$$\\$$device\\$$\\$$Base")
+set_property(TARGET linker PROPERTY devices_start_symbol "Image$$device$$Base")
 
-find_program(CMAKE_LINKER ${CROSS_COMPILE}armlink PATH ${TOOLCHAIN_HOME} NO_DEFAULT_PATH)
+find_program(CMAKE_LINKER ${CROSS_COMPILE}armlink PATHS ${TOOLCHAIN_HOME} NO_DEFAULT_PATH)
 
 add_custom_target(armlink)
-
-macro(toolchain_ld_base)
-endmacro()
 
 function(toolchain_ld_force_undefined_symbols)
   foreach(symbol ${ARGN})
@@ -22,40 +12,49 @@ function(toolchain_ld_force_undefined_symbols)
   endforeach()
 endfunction()
 
-macro(toolchain_ld_baremetal)
-endmacro()
-
 macro(configure_linker_script linker_script_gen linker_pass_define)
   set(STEERING_FILE)
   set(STEERING_C)
   set(STEERING_FILE_ARG)
   set(STEERING_C_ARG)
+  set(linker_pass_define_list ${linker_pass_define})
+  set(cmake_linker_script_settings
+      ${PROJECT_BINARY_DIR}/include/generated/ld_script_settings_${linker_pass_define}.cmake
+  )
 
-  if("LINKER_ZEPHYR_FINAL" IN_LIST "${linker_pass_define}")
+  if("LINKER_ZEPHYR_FINAL" IN_LIST linker_pass_define_list)
     set(STEERING_FILE ${CMAKE_CURRENT_BINARY_DIR}/armlink_symbol_steering.steer)
     set(STEERING_C ${CMAKE_CURRENT_BINARY_DIR}/armlink_symbol_steering.c)
     set(STEERING_FILE_ARG "-DSTEERING_FILE=${STEERING_FILE}")
     set(STEERING_C_ARG "-DSTEERING_C=${STEERING_C}")
   endif()
 
+  file(GENERATE OUTPUT ${cmake_linker_script_settings} CONTENT
+       "set(FORMAT \"$<TARGET_PROPERTY:linker,FORMAT>\" CACHE INTERNAL \"\")\n
+        set(ENTRY \"$<TARGET_PROPERTY:linker,ENTRY>\" CACHE INTERNAL \"\")\n
+        set(MEMORY_REGIONS \"$<TARGET_PROPERTY:linker,MEMORY_REGIONS>\" CACHE INTERNAL \"\")\n
+        set(GROUPS \"$<TARGET_PROPERTY:linker,GROUPS>\" CACHE INTERNAL \"\")\n
+        set(SECTIONS \"$<TARGET_PROPERTY:linker,SECTIONS>\" CACHE INTERNAL \"\")\n
+        set(SECTION_SETTINGS \"$<TARGET_PROPERTY:linker,SECTION_SETTINGS>\" CACHE INTERNAL \"\")\n
+        set(SYMBOLS \"$<TARGET_PROPERTY:linker,SYMBOLS>\" CACHE INTERNAL \"\")\n
+       "
+    )
   add_custom_command(
     OUTPUT ${linker_script_gen}
            ${STEERING_FILE}
            ${STEERING_C}
     COMMAND ${CMAKE_COMMAND}
+      -C ${DEVICE_API_LINKER_SECTIONS_CMAKE}
+      -C ${cmake_linker_script_settings}
       -DPASS="${linker_pass_define}"
-      -DMEMORY_REGIONS="$<TARGET_PROPERTY:linker,MEMORY_REGIONS>"
-      -DGROUPS="$<TARGET_PROPERTY:linker,GROUPS>"
-      -DSECTIONS="$<TARGET_PROPERTY:linker,SECTIONS>"
-      -DSECTION_SETTINGS="$<TARGET_PROPERTY:linker,SECTION_SETTINGS>"
-      -DSYMBOLS="$<TARGET_PROPERTY:linker,SYMBOLS>"
       ${STEERING_FILE_ARG}
       ${STEERING_C_ARG}
       -DOUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/${linker_script_gen}
       -P ${ZEPHYR_BASE}/cmake/linker/armlink/scatter_script.cmake
+    DEPENDS ${DEVICE_API_LD_TARGET}
   )
 
-  if("LINKER_ZEPHYR_FINAL" IN_LIST "${linker_pass_define}")
+  if("LINKER_ZEPHYR_FINAL" IN_LIST linker_pass_define_list)
     add_library(armlink_steering OBJECT ${STEERING_C})
     target_link_libraries(armlink_steering PRIVATE zephyr_interface)
   endif()
@@ -71,7 +70,7 @@ function(toolchain_ld_link_elf)
   )
 
   foreach(lib ${ZEPHYR_LIBS_PROPERTY})
-    if(NOT ${lib} STREQUAL arch__arm__core__aarch32__cortex_m)
+    if(NOT ${lib} STREQUAL arch__arm__core__cortex_m)
       list(APPEND ZEPHYR_LIBS_OBJECTS $<TARGET_OBJECTS:${lib}>)
       list(APPEND ZEPHYR_LIBS_OBJECTS $<TARGET_PROPERTY:${lib},LINK_LIBRARIES>)
     endif()
@@ -82,7 +81,7 @@ function(toolchain_ld_link_elf)
     ${TOOLCHAIN_LD_LINK_ELF_LIBRARIES_PRE_SCRIPT}
     --scatter=${TOOLCHAIN_LD_LINK_ELF_LINKER_SCRIPT}
     ${TOOLCHAIN_LD_LINK_ELF_LIBRARIES_POST_SCRIPT}
-    $<TARGET_OBJECTS:arch__arm__core__aarch32__cortex_m>
+    $<TARGET_OBJECTS:arch__arm__core__cortex_m>
     --map --list=${TOOLCHAIN_LD_LINK_ELF_OUTPUT_MAP}
     ${ZEPHYR_LIBS_OBJECTS}
     kernel
@@ -100,8 +99,8 @@ function(toolchain_ld_link_elf)
     # The scatter file is generated, and thus sometimes input sections are specified
     # even though there will be no such sections found in the libraries linked.
     --diag_suppress=6314
-    # We use empty excution sections in order to define custom symbols, such as
-    # __kernel_ram_x symbols, but nothing will go in those section, so silnence
+    # We use empty execution sections in order to define custom symbols, such as
+    # __kernel_ram_x symbols, but nothing will go in those section, so silence
     # the warning. Note, marking the section EMPTY causes armlink to reserve the
     # address which in some cases leads to overlapping section errors.
     --diag_suppress=6312
@@ -120,8 +119,23 @@ function(toolchain_ld_link_elf)
   )
 endfunction(toolchain_ld_link_elf)
 
-include(${ZEPHYR_BASE}/cmake/linker/ld/target_base.cmake)
-#include(${ZEPHYR_BASE}/cmake/linker/ld/target_baremetal.cmake)
-include(${ZEPHYR_BASE}/cmake/linker/ld/target_cpp.cmake)
+# This function will generate the correct CMAKE_C_LINK_EXECUTABLE / CMAKE_CXX_LINK_EXECUTABLE
+# rule to ensure that standard c and runtime libraries are correctly placed
+# and the end of link invocation and doesn't appear in the middle of the link
+# command invocation.
+macro(toolchain_linker_finalize)
+  set(zephyr_std_libs)
+  get_property(link_order TARGET linker PROPERTY link_order_library)
+  foreach(lib ${link_order})
+    get_property(link_flag TARGET linker PROPERTY ${lib}_library)
+    set(zephyr_std_libs "${zephyr_std_libs} ${link_flag}")
+  endforeach()
+
+  set(common_link "<LINK_FLAGS> <LINK_LIBRARIES> <OBJECTS> ${zephyr_std_libs} -o <TARGET>")
+  set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_LINKER> <CMAKE_C_LINK_FLAGS> ${common_link}")
+  set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_LINKER> <CMAKE_CXX_LINK_FLAGS> ${common_link}")
+  set(CMAKE_ASM_LINK_EXECUTABLE "<CMAKE_LINKER> <CMAKE_ASM_LINK_FLAGS> ${common_link}")
+endmacro()
+
 include(${ZEPHYR_BASE}/cmake/linker/ld/target_relocation.cmake)
 include(${ZEPHYR_BASE}/cmake/linker/ld/target_configure.cmake)

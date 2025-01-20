@@ -73,7 +73,7 @@ API Changes
 
 * ``<drivers/dma.h>`` has seen its callback normalized. It had its signature
   changed to add a struct device pointer as first parameter. Such callback
-  signature has been generalized throuh the addition of dma_callback_t.
+  signature has been generalized through the addition of dma_callback_t.
   'callback_arg' argument has been renamed to 'user_data. All user code have
   been modified accordingly.
 
@@ -98,7 +98,7 @@ API Changes
 * All device instances got a const qualifier. So this applies to all APIs
   manipulating ``struct device *`` (ADC, GPIO, I2C, ...). In order to avoid
   const qualifier loss on ISRs, all ISRs now take a ``const *void`` as a
-  paremeter as well.
+  parameter as well.
 
 * The ``_gatt_`` and ``_GATT_`` infixes have been removed for the HRS, DIS
   and BAS APIs and the Kconfig options.
@@ -400,7 +400,7 @@ Drivers and Sensors
 
 * DMA
 
-  * STM32: Number of changes including k_malloc removal, driver piority init
+  * STM32: Number of changes including k_malloc removal, driver priority init
     increase, get_status API addition and various cleanups.
   * Added MCUX EDMA driver for i.MX RT and Kinetis K6x SoCs.
   * Added MCUX LPC driver for LPC and i.MX RT6xx SoCs.
@@ -440,7 +440,7 @@ Drivers and Sensors
     supported driver using the ``jedec,spi-nor`` compatible.
   * Enhanced nRF QSPI NOR flash driver (nrf_qspi_nor) so it supports unaligned read offset, read length and buffer offset.
   * Added SFDP support in spi_nor driver.
-  * Fixed regression in nRF flash driver (soc_flash_nrf) with :kconfig:`CONFIG_BT_CTLR_LOW_LAT` option.
+  * Fixed regression in nRF flash driver (soc_flash_nrf) with :kconfig:option:`CONFIG_BT_CTLR_LOW_LAT` option.
   * Introduced NRF radio scheduler interface in nRF flash driver (soc_flash_nrf).
   * STM32: Factorized support for F0/F1/F3. Added L0 support. Various fixes.
 
@@ -456,13 +456,13 @@ Drivers and Sensors
 * I2C
 
   * Introduced new driver for NXP LPC11U6x SoCs.  See
-    :kconfig:`CONFIG_I2C_LPC11U6X`.
+    :kconfig:option:`CONFIG_I2C_LPC11U6X`.
 
   * Introduced new driver for emulated I2C devices, where I2C operations
     are forwarded to a module that emulates responses from hardware.
     This enables testing without hardware and allows unusual conditions
     to be synthesized to test driver behavior.  See
-    :kconfig:`CONFIG_I2C_EMUL`.
+    :kconfig:option:`CONFIG_I2C_EMUL`.
 
   * STM32: V1: Reset i2c device on read/write error.
   * STM32: V2: Added dts configurable Timing option.
@@ -477,8 +477,8 @@ Drivers and Sensors
   * Allow user to disable auto-start of IEEE 802.15.4 network interface.
     By default the IEEE 802.15.4 network interface is automatically started.
   * Added support for setting TX power in rf2xx driver.
-  * Added Nordic 802.15.4 multiprotocol support, see :kconfig:`CONFIG_NRF_802154_MULTIPROTOCOL_SUPPORT`.
-  * Added Kconfig :kconfig:`CONFIG_IEEE802154_VENDOR_OUI_ENABLE` option for defining OUI.
+  * Added Nordic 802.15.4 multiprotocol support, see :kconfig:option:`CONFIG_NRF_802154_MULTIPROTOCOL_SUPPORT`.
+  * Added Kconfig :kconfig:option:`CONFIG_IEEE802154_VENDOR_OUI_ENABLE` option for defining OUI.
 
 * Interrupt Controller
 
@@ -576,11 +576,11 @@ Drivers and Sensors
     application relies on any of the following Kconfig options, then
     it shall also enable the USB subsystem:
 
-    * :kconfig:`CONFIG_USB_DEVICE_NETWORK_ECM`
-    * :kconfig:`CONFIG_USB_DEVICE_NETWORK_EEM`
-    * :kconfig:`CONFIG_USB_DEVICE_NETWORK_RNDIS`
-    * :kconfig:`CONFIG_TRACING_BACKEND_USB`
-    * :kconfig:`CONFIG_USB_UART_CONSOLE`
+    * :kconfig:option:`CONFIG_USB_DEVICE_NETWORK_ECM`
+    * :kconfig:option:`CONFIG_USB_DEVICE_NETWORK_EEM`
+    * :kconfig:option:`CONFIG_USB_DEVICE_NETWORK_RNDIS`
+    * :kconfig:option:`CONFIG_TRACING_BACKEND_USB`
+    * ``CONFIG_USB_UART_CONSOLE``
 
   * USB device support has got its own work queue
     which is used by CDC ACM class by default.
@@ -634,7 +634,7 @@ Networking
 * Added support for IPv6 multicast packet routing.
 * Added support to SOCK_DGRAM type sockets for AF_PACKET family.
 * Added support for using TLS sockets when using socket offloading.
-* Added additonal checks in IPv6 to ensure that multicasts are only passed to the
+* Added additional checks in IPv6 to ensure that multicasts are only passed to the
   upper layer if the originating interface actually joined the destination
   multicast group.
 * Allow user to specify TCP port number in HTTP request.
@@ -645,7 +645,7 @@ Networking
 * Allow using wildcards in CoAP resource path description.
 * Allow user to specify used network interface in net-shell ping command.
 * Allow user to select a custom mbedtls library in OpenThread.
-* Removed dependency to :kconfig:`CONFIG_NET_SOCKETS_POSIX_NAMES` from offloaded
+* Removed dependency to :kconfig:option:`CONFIG_NET_SOCKETS_POSIX_NAMES` from offloaded
   WiFi device drivers.
 * Print more gPTP status information in gptp net shell.
 * Fixed the network traffic class statistics collection.
@@ -778,7 +778,7 @@ Libraries / Subsystems
     * UDP port switched to using kernel stack.
     * smp: added missing socket close in error path.
 
-  * Added support for Open Supervised Device Protocol (OSDP), see :kconfig:`CONFIG_OSDP`.
+  * Added support for Open Supervised Device Protocol (OSDP), see :kconfig:option:`CONFIG_OSDP`.
 
   * updatehub
 
@@ -803,7 +803,7 @@ Libraries / Subsystems
 
   * Fixed immediate logging with multiple backends.
   * Switched logging thread to use kernel stack.
-  * Allow users to disable all shell backends at one using :kconfig:`CONFIG_SHELL_LOG_BACKEND`.
+  * Allow users to disable all shell backends at one using :kconfig:option:`CONFIG_SHELL_LOG_BACKEND`.
   * Added Spinel protocol logging backend.
   * Fixed timestamp calculation when using NEWLIB.
 
@@ -824,14 +824,14 @@ Libraries / Subsystems
     If your application relies on any of the following Kconfig defaults consider
     checking if the new values are good or they need to be adjusted:
 
-    * :kconfig:`CONFIG_LVGL_HOR_RES_MAX`
-    * :kconfig:`CONFIG_LVGL_VER_RES_MAX`
-    * :kconfig:`CONFIG_LVGL_DPI`
-    * :kconfig:`CONFIG_LVGL_DISP_DEF_REFR_PERIOD`
-    * :kconfig:`CONFIG_LVGL_INDEV_DEF_READ_PERIOD`
-    * :kconfig:`CONFIG_LVGL_INDEV_DEF_DRAG_THROW`
-    * :kconfig:`CONFIG_LVGL_TXT_LINE_BREAK_LONG_LEN`
-    * :kconfig:`CONFIG_LVGL_CHART_AXIS_TICK_LABEL_MAX_LEN`
+    * :kconfig:option:`CONFIG_LVGL_HOR_RES_MAX`
+    * :kconfig:option:`CONFIG_LVGL_VER_RES_MAX`
+    * :kconfig:option:`CONFIG_LVGL_DPI`
+    * :kconfig:option:`CONFIG_LVGL_DISP_DEF_REFR_PERIOD`
+    * :kconfig:option:`CONFIG_LVGL_INDEV_DEF_READ_PERIOD`
+    * :kconfig:option:`CONFIG_LVGL_INDEV_DEF_DRAG_THROW`
+    * :kconfig:option:`CONFIG_LVGL_TXT_LINE_BREAK_LONG_LEN`
+    * :kconfig:option:`CONFIG_LVGL_CHART_AXIS_TICK_LABEL_MAX_LEN`
 
   * Note that ROM usage is significantly higher on v7 for minimal
     configurations. This is in part due to new features such as the new drawing

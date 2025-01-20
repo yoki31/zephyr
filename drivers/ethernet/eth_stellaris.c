@@ -9,15 +9,16 @@
 
 #define LOG_MODULE_NAME eth_stellaris
 #define LOG_LEVEL CONFIG_ETHERNET_LOG_LEVEL
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
-#include <net/ethernet.h>
-#include <net/net_pkt.h>
-#include <net/net_if.h>
-#include <device.h>
+#include <zephyr/net/ethernet.h>
+#include <zephyr/net/net_pkt.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/device.h>
 #include <soc.h>
 #include <ethernet/eth_stats.h>
+#include <zephyr/irq.h>
 #include "eth_stellaris_priv.h"
 
 static void eth_stellaris_assign_mac(const struct device *dev)
@@ -39,7 +40,7 @@ static void eth_stellaris_assign_mac(const struct device *dev)
 
 static void eth_stellaris_flush(const struct device *dev)
 {
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	struct eth_stellaris_runtime *dev_data = dev->data;
 
 	if (dev_data->tx_pos != 0) {
 		sys_write32(dev_data->tx_word, REG_MACDATA);
@@ -50,7 +51,7 @@ static void eth_stellaris_flush(const struct device *dev)
 
 static void eth_stellaris_send_byte(const struct device *dev, uint8_t byte)
 {
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	struct eth_stellaris_runtime *dev_data = dev->data;
 
 	dev_data->tx_word |= byte << (dev_data->tx_pos * 8);
 	dev_data->tx_pos++;
@@ -63,7 +64,7 @@ static void eth_stellaris_send_byte(const struct device *dev, uint8_t byte)
 
 static int eth_stellaris_send(const struct device *dev, struct net_pkt *pkt)
 {
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	struct eth_stellaris_runtime *dev_data = dev->data;
 	struct net_buf *frag;
 	uint16_t i, data_len;
 
@@ -201,9 +202,9 @@ error:
 	return NULL;
 }
 
-static void eth_stellaris_rx(const struct device *dev)
+static int eth_stellaris_rx(const struct device *dev)
 {
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	struct eth_stellaris_runtime *dev_data = dev->data;
 	struct net_if *iface = dev_data->iface;
 	struct net_pkt *pkt;
 
@@ -218,19 +219,21 @@ static void eth_stellaris_rx(const struct device *dev)
 		goto pkt_unref;
 	}
 
-	return;
+	return 0;
 
 pkt_unref:
 	net_pkt_unref(pkt);
 
 err_mem:
 	eth_stellaris_rx_error(iface);
+	return -EIO;
 }
 
 static void eth_stellaris_isr(const struct device *dev)
 {
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	struct eth_stellaris_runtime *dev_data = dev->data;
 	int isr_val = sys_read32(REG_MACRIS);
+	int num_packets;
 	uint32_t lock;
 
 	lock = irq_lock();
@@ -239,7 +242,18 @@ static void eth_stellaris_isr(const struct device *dev)
 	sys_write32(isr_val, REG_MACRIS);
 
 	if (isr_val & BIT_MACRIS_RXINT) {
-		eth_stellaris_rx(dev);
+		/*
+		 * When multiple packets are received by the Ethernet,
+		 * only one interrupt may be dispatched to the driver
+		 * Therefore, it is necessary to obtain the register NP value
+		 * to get how many packets are in the Ethernet.
+		 */
+		num_packets = sys_read32(REG_MACNP);
+		for (int i = 0; i < num_packets; i++) {
+			if (eth_stellaris_rx(dev) != 0) {
+				break;
+			}
+		}
 	}
 
 	if (isr_val & BIT_MACRIS_TXEMP) {
@@ -270,8 +284,8 @@ static void eth_stellaris_isr(const struct device *dev)
 static void eth_stellaris_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
-	const struct eth_stellaris_config *dev_conf = DEV_CFG(dev);
-	struct eth_stellaris_runtime *dev_data = DEV_DATA(dev);
+	const struct eth_stellaris_config *dev_conf = dev->config;
+	struct eth_stellaris_runtime *dev_data = dev->data;
 
 	dev_data->iface = iface;
 
@@ -291,7 +305,9 @@ static void eth_stellaris_init(struct net_if *iface)
 #if defined(CONFIG_NET_STATISTICS_ETHERNET)
 static struct net_stats_eth *eth_stellaris_stats(const struct device *dev)
 {
-	return &(DEV_DATA(dev)->stats);
+	struct eth_stellaris_runtime *dev_data = dev->data;
+
+	return &dev_data->stats;
 }
 #endif
 

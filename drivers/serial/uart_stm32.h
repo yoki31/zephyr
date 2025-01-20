@@ -12,23 +12,51 @@
 #ifndef ZEPHYR_DRIVERS_SERIAL_UART_STM32_H_
 #define ZEPHYR_DRIVERS_SERIAL_UART_STM32_H_
 
-#include <drivers/pinctrl.h>
+#include <zephyr/drivers/pinctrl.h>
+#include <zephyr/drivers/reset.h>
+#include <zephyr/drivers/uart.h>
+
+#include <stm32_ll_usart.h>
 
 /* device config */
 struct uart_stm32_config {
-	struct uart_device_config uconf;
+	/* USART instance */
+	USART_TypeDef *usart;
+	/* Reset controller device configuration */
+	const struct reset_dt_spec reset;
 	/* clock subsystem driving this peripheral */
-	struct stm32_pclken pclken;
-	/* initial hardware flow control, 1 for RTS/CTS */
-	bool hw_flow_control;
-	/* initial parity, 0 for none, 1 for odd, 2 for even */
-	int  parity;
+	const struct stm32_pclken *pclken;
+	/* number of clock subsystems */
+	size_t pclk_len;
+	/* switch to enable single wire / half duplex feature */
+	bool single_wire;
+	/* enable tx/rx pin swap */
+	bool tx_rx_swap;
+	/* enable rx pin inversion */
+	bool rx_invert;
+	/* enable tx pin inversion */
+	bool tx_invert;
+	/* enable de signal */
+	bool de_enable;
+	/* de signal assertion time in 1/16 of a bit */
+	uint8_t de_assert_time;
+	/* de signal deassertion time in 1/16 of a bit */
+	uint8_t de_deassert_time;
+	/* enable de pin inversion */
+	bool de_invert;
+	/* enable fifo */
+	bool fifo_enable;
+	/* pin muxing */
 	const struct pinctrl_dev_config *pcfg;
-#if defined(CONFIG_PM) \
-	&& !defined(CONFIG_UART_INTERRUPT_DRIVEN) \
-	&& !defined(CONFIG_UART_ASYNC_API)
+#if defined(CONFIG_UART_INTERRUPT_DRIVEN) || defined(CONFIG_UART_ASYNC_API) || \
+	defined(CONFIG_PM)
 	uart_irq_config_func_t irq_config_func;
 #endif
+#if defined(CONFIG_PM)
+	/* Device defined as wake-up source */
+	bool wakeup_source;
+	uint32_t wakeup_line;
+#endif /* CONFIG_PM */
 };
 
 #ifdef CONFIG_UART_ASYNC_API
@@ -53,11 +81,10 @@ struct uart_dma_stream {
 
 /* driver data */
 struct uart_stm32_data {
-	/* Baud rate */
-	uint32_t baud_rate;
 	/* clock device */
 	const struct device *clock;
-	atomic_t tx_lock;
+	/* uart config */
+	struct uart_config *uart_cfg;
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 	uart_irq_callback_user_data_t user_cb;
 	void *user_data;
@@ -74,7 +101,8 @@ struct uart_stm32_data {
 #endif
 #ifdef CONFIG_PM
 	bool tx_poll_stream_on;
-	bool pm_constraint_on;
+	bool tx_int_stream_on;
+	bool pm_policy_state_on;
 #endif
 };
 

@@ -10,27 +10,29 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <zephyr.h>
-#include <arch/cpu.h>
-#include <sys/byteorder.h>
-#include <logging/log.h>
-#include <sys/util.h>
+#include <zephyr/kernel.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
-#include <device.h>
-#include <init.h>
-#include <drivers/uart.h>
+#include <zephyr/device.h>
+#include <zephyr/init.h>
+#include <zephyr/drivers/uart.h>
 
-#include <net/buf.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/l2cap.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/buf.h>
-#include <bluetooth/hci_raw.h>
+#include <zephyr/usb/usb_device.h>
+
+#include <zephyr/net_buf.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/l2cap.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/buf.h>
+#include <zephyr/bluetooth/hci_raw.h>
 
 #define LOG_MODULE_NAME hci_uart
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
-static const struct device *hci_uart_dev =
+static const struct device *const hci_uart_dev =
 	DEVICE_DT_GET(DT_CHOSEN(zephyr_bt_c2h_uart));
 static K_THREAD_STACK_DEFINE(tx_thread_stack, CONFIG_BT_HCI_TX_STACK_SIZE);
 static struct k_thread tx_thread_data;
@@ -177,7 +179,7 @@ static void rx_isr(void)
 			if (remaining == 0) {
 				/* Packet received */
 				LOG_DBG("putting RX packet in queue.");
-				net_buf_put(&tx_queue, buf);
+				k_fifo_put(&tx_queue, buf);
 				state = ST_IDLE;
 			}
 			break;
@@ -210,7 +212,7 @@ static void tx_isr(void)
 	int len;
 
 	if (!buf) {
-		buf = net_buf_get(&uart_tx_queue, K_NO_WAIT);
+		buf = k_fifo_get(&uart_tx_queue, K_NO_WAIT);
 		if (!buf) {
 			uart_irq_tx_disable(hci_uart_dev);
 			return;
@@ -230,17 +232,19 @@ static void bt_uart_isr(const struct device *unused, void *user_data)
 	ARG_UNUSED(unused);
 	ARG_UNUSED(user_data);
 
-	if (!(uart_irq_rx_ready(hci_uart_dev) ||
-	      uart_irq_tx_ready(hci_uart_dev))) {
-		LOG_DBG("spurious interrupt");
-	}
+	while (uart_irq_update(hci_uart_dev) && uart_irq_is_pending(hci_uart_dev)) {
+		if (!(uart_irq_rx_ready(hci_uart_dev) ||
+		      uart_irq_tx_ready(hci_uart_dev))) {
+			LOG_DBG("spurious interrupt");
+		}
 
-	if (uart_irq_tx_ready(hci_uart_dev)) {
-		tx_isr();
-	}
+		if (uart_irq_tx_ready(hci_uart_dev)) {
+			tx_isr();
+		}
 
-	if (uart_irq_rx_ready(hci_uart_dev)) {
-		rx_isr();
+		if (uart_irq_rx_ready(hci_uart_dev)) {
+			rx_isr();
+		}
 	}
 }
 
@@ -251,7 +255,7 @@ static void tx_thread(void *p1, void *p2, void *p3)
 		int err;
 
 		/* Wait until a buffer is available */
-		buf = net_buf_get(&tx_queue, K_FOREVER);
+		buf = k_fifo_get(&tx_queue, K_FOREVER);
 		/* Pass buffer to the stack */
 		err = bt_send(buf);
 		if (err) {
@@ -271,7 +275,7 @@ static int h4_send(struct net_buf *buf)
 	LOG_DBG("buf %p type %u len %u", buf, bt_buf_get_type(buf),
 		    buf->len);
 
-	net_buf_put(&uart_tx_queue, buf);
+	k_fifo_put(&uart_tx_queue, buf);
 	uart_irq_tx_enable(hci_uart_dev);
 
 	return 0;
@@ -324,9 +328,16 @@ void bt_ctlr_assert_handle(char *file, uint32_t line)
 }
 #endif /* CONFIG_BT_CTLR_ASSERT_HANDLER */
 
-static int hci_uart_init(const struct device *unused)
+static int hci_uart_init(void)
 {
 	LOG_DBG("");
+
+	if (IS_ENABLED(CONFIG_USB_CDC_ACM)) {
+		if (usb_enable(NULL)) {
+			LOG_ERR("Failed to enable USB");
+			return -EINVAL;
+		}
+	}
 
 	if (!device_is_ready(hci_uart_dev)) {
 		LOG_ERR("HCI UART %s is not ready", hci_uart_dev->name);
@@ -343,10 +354,9 @@ static int hci_uart_init(const struct device *unused)
 	return 0;
 }
 
-SYS_DEVICE_DEFINE("hci_uart", hci_uart_init,
-		  APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
+SYS_INIT(hci_uart_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
-void main(void)
+int main(void)
 {
 	/* incoming events and data from the controller */
 	static K_FIFO_DEFINE(rx_queue);
@@ -395,10 +405,11 @@ void main(void)
 	while (1) {
 		struct net_buf *buf;
 
-		buf = net_buf_get(&rx_queue, K_FOREVER);
+		buf = k_fifo_get(&rx_queue, K_FOREVER);
 		err = h4_send(buf);
 		if (err) {
 			LOG_ERR("Failed to send");
 		}
 	}
+	return 0;
 }

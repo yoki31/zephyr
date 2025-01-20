@@ -1,7 +1,8 @@
-.. _sgp40_sht4x:
+.. zephyr:code-sample:: sgp40_sht4x
+   :name: SGP40 and SHT4X digital humidity and multipixel gas sensor
+   :relevant-api: sensor_interface
 
-SGP40 and SHT4X: High accuracy digital I2C humidity sensor and multipixel gas sensor
-####################################################################################
+   Get temperature, humidity and gas sensor data from SGP40 and SHT4X sensors (polling mode).
 
 Description
 ***********
@@ -41,7 +42,7 @@ Building and Running
 This project outputs sensor data to the console. It requires a SHT4X and a SGP40
 sensor. It should work with any platform featuring a I2C peripheral
 interface. This example has an example device tree overlay
-for the :ref:`blackpill_f411ce` board.
+for the :zephyr:board:`blackpill_f411ce` board.
 
 
 .. zephyr-app-commands::
@@ -57,7 +58,7 @@ Sample Output
 
         *** Booting Zephyr OS build v2.6.0-rc1-315-g50d8d1187138  ***
         SHT4X: 23.64 Temp. [C] ; 30.74 RH [%] -- SGP40: 30531 Gas [a.u.]
-        [00:00:00.250,000] <dbg> SGP40.sgp40_init: SGP40: Selftest succeded!
+        [00:00:00.250,000] <dbg> SGP40.sgp40_init: SGP40: Selftest succeeded!
         SHT4X: 23.66 Temp. [C] ; 32.16 RH [%] -- SGP40: 30541 Gas [a.u.]
         SHT4X: 23.63 Temp. [C] ; 30.83 RH [%] -- SGP40: 30522 Gas [a.u.]
 

@@ -12,15 +12,21 @@
 #include <stddef.h>
 #include <limits.h>
 
+#include <zephyr/toolchain.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 unsigned long strtoul(const char *nptr, char **endptr, int base);
 long strtol(const char *nptr, char **endptr, int base);
+unsigned long long strtoull(const char *nptr, char **endptr, int base);
+long long strtoll(const char *nptr, char **endptr, int base);
 int atoi(const char *s);
 
 void *malloc(size_t size);
+void *aligned_alloc(size_t alignment, size_t size); /* From C11 */
+
 void free(void *ptr);
 void *calloc(size_t nmemb, size_t size);
 void *realloc(void *ptr, size_t size);
@@ -32,18 +38,21 @@ void *bsearch(const void *key, const void *array,
 
 void qsort_r(void *base, size_t nmemb, size_t size,
 	     int (*compar)(const void *, const void *, void *), void *arg);
+void qsort(void *base, size_t nmemb, size_t size,
+	   int (*compar)(const void *, const void *));
 
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
-void _exit(int status);
-static inline void exit(int status)
+FUNC_NORETURN void _exit(int status);
+FUNC_NORETURN static inline void exit(int status)
 {
 	_exit(status);
 }
-void abort(void);
+FUNC_NORETURN void abort(void);
 
 #ifdef CONFIG_MINIMAL_LIBC_RAND
 #define RAND_MAX INT_MAX
+int rand_r(unsigned int *seed);
 int rand(void);
 void srand(unsigned int seed);
 #endif /* CONFIG_MINIMAL_LIBC_RAND */
@@ -63,13 +72,15 @@ static inline long long llabs(long long __n)
 	return (__n < 0LL) ? -__n : __n;
 }
 
-static inline void qsort(void *base, size_t nmemb, size_t size,
-	int (*compar)(const void *, const void *))
-{
-	typedef int (*compar3)(const void *, const void *, void *);
+char *getenv(const char *name);
+#if _POSIX_C_SOURCE >= 200112L
+int setenv(const char *name, const char *val, int overwrite);
+int unsetenv(const char *name);
+#endif
 
-	qsort_r(base, nmemb, size, (compar3)compar, NULL);
-}
+#ifdef _BSD_SOURCE
+int getenv_r(const char *name, char *buf, size_t len);
+#endif
 
 #ifdef __cplusplus
 }

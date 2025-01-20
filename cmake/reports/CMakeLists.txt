@@ -2,7 +2,7 @@
 
 set(flag_for_ram_report ram)
 set(flag_for_rom_report rom)
-set(flag_for_footprint all -q)
+set(flag_for_footprint all)
 set(report_depth 99)
 
 if(DEFINED ZEPHYR_WORKSPACE)
@@ -28,6 +28,44 @@ foreach(report ram_report rom_report footprint)
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
 endforeach()
+
+if (CONFIG_BUILD_WITH_TFM)
+  foreach(report ram_report rom_report footprint)
+    add_custom_target(
+      tfm_${report}
+      ${PYTHON_EXECUTABLE}
+      ${ZEPHYR_BASE}/scripts/footprint/size_report
+      -k $<TARGET_PROPERTY:tfm,TFM_S_ELF_FILE>
+      -z ${ZEPHYR_BASE}
+      -o ${CMAKE_BINARY_DIR}
+      ${workspace_arg}
+      -d ${report_depth}
+      ${flag_for_${report}}
+      DEPENDS tfm
+      USES_TERMINAL
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      )
+  endforeach()
+endif()
+
+if (CONFIG_TFM_BL2)
+  foreach(report ram_report rom_report footprint)
+  add_custom_target(
+    bl2_${report}
+    ${PYTHON_EXECUTABLE}
+    ${ZEPHYR_BASE}/scripts/footprint/size_report
+    -k $<TARGET_PROPERTY:tfm,BL2_ELF_FILE>
+    -z ${ZEPHYR_BASE}
+    -o ${CMAKE_BINARY_DIR}
+    ${workspace_arg}
+    -d ${report_depth}
+    ${flag_for_${report}}
+    DEPENDS tfm
+    USES_TERMINAL
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+  endforeach()
+endif()
 
 find_program(PUNCOVER puncover)
 

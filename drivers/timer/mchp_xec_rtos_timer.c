@@ -6,12 +6,14 @@
 
 #define DT_DRV_COMPAT microchip_xec_rtos_timer
 
-#include <devicetree.h>
+#include <zephyr/init.h>
+#include <zephyr/devicetree.h>
 #include <soc.h>
-#include <drivers/timer/system_timer.h>
-#include <sys_clock.h>
-#include <spinlock.h>
-#include <arch/arm/aarch32/cortex_m/cmsis.h>
+#include <zephyr/drivers/timer/system_timer.h>
+#include <zephyr/sys_clock.h>
+#include <zephyr/spinlock.h>
+#include <cmsis_core.h>
+#include <zephyr/irq.h>
 
 BUILD_ASSERT(!IS_ENABLED(CONFIG_SMP), "XEC RTOS timer doesn't support SMP");
 BUILD_ASSERT(CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC == 32768,
@@ -41,7 +43,7 @@ BUILD_ASSERT(CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC == 32768,
  *
  * CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC=<hz> must be set to 32768.
  *
- * To reduce truncation errors from accumalating due to conversion
+ * To reduce truncation errors from accumulating due to conversion
  * to/from time, ticks, and HW cycles set ticks per second equal to
  * the frequency. With tickless kernel mode enabled the kernel will not
  * program a periodic timer at this fast rate.
@@ -366,53 +368,6 @@ void sys_clock_disable(void)
 	TIMER_REGS->CTRL = 0U;
 }
 
-int sys_clock_driver_init(const struct device *dev)
-{
-	ARG_UNUSED(dev);
-
-#ifdef CONFIG_TICKLESS_KERNEL
-	cached_icr = MAX_TICKS;
-#endif
-
-	TIMER_REGS->CTRL = 0u;
-	girq_src_clr(TIMER_GIRQ, TIMER_GIRQ_POS);
-	girq_src_dis(TIMER_GIRQ, TIMER_GIRQ_POS);
-	NVIC_ClearPendingIRQ(TIMER_NVIC_NO);
-
-	IRQ_CONNECT(TIMER_NVIC_NO, TIMER_NVIC_PRIO, xec_rtos_timer_isr, 0, 0);
-	irq_enable(TIMER_NVIC_NO);
-	girq_src_en(TIMER_GIRQ, TIMER_GIRQ_POS);
-
-#ifdef CONFIG_ARCH_HAS_CUSTOM_BUSY_WAIT
-	uint32_t btmr_ctrl = (MCHP_BTMR_CTRL_ENABLE
-			      | MCHP_BTMR_CTRL_AUTO_RESTART
-			      | MCHP_BTMR_CTRL_COUNT_UP
-			      | (47UL << MCHP_BTMR_CTRL_PRESCALE_POS));
-
-#if CONFIG_SOC_SERIES_MEC1501X
-	mchp_pcr_periph_slp_ctrl(PCR_B32TMR0, 0);
-#else
-	PCR_XEC_REGS->SLP_EN[BTMR32_0_PCR_REG_IDX] &= ~BIT(BTMR32_0_PCR_BITPOS);
-#endif
-	BTMR32_0_REGS->CTRL = MCHP_BTMR_CTRL_SOFT_RESET;
-	BTMR32_0_REGS->CTRL = btmr_ctrl;
-	BTMR32_0_REGS->PRLD = UINT32_MAX;
-	btmr_ctrl |= MCHP_BTMR_CTRL_START;
-
-	timer_restart(cached_icr);
-	/* wait for RTOS timer to load count register from preload */
-	while (TIMER_REGS->CNT == 0) {
-		;
-	}
-
-	BTMR32_0_REGS->CTRL = btmr_ctrl;
-#else
-	timer_restart(cached_icr);
-#endif
-
-	return 0;
-}
-
 #ifdef CONFIG_ARCH_HAS_CUSTOM_BUSY_WAIT
 
 /*
@@ -442,3 +397,52 @@ void arch_busy_wait(uint32_t usec_to_wait)
 	}
 }
 #endif
+
+static int sys_clock_driver_init(void)
+{
+
+#ifdef CONFIG_TICKLESS_KERNEL
+	cached_icr = MAX_TICKS;
+#endif
+
+	TIMER_REGS->CTRL = 0u;
+	girq_src_clr(TIMER_GIRQ, TIMER_GIRQ_POS);
+	girq_src_dis(TIMER_GIRQ, TIMER_GIRQ_POS);
+	NVIC_ClearPendingIRQ(TIMER_NVIC_NO);
+
+	IRQ_CONNECT(TIMER_NVIC_NO, TIMER_NVIC_PRIO, xec_rtos_timer_isr, 0, 0);
+	irq_enable(TIMER_NVIC_NO);
+	girq_src_en(TIMER_GIRQ, TIMER_GIRQ_POS);
+
+#ifdef CONFIG_ARCH_HAS_CUSTOM_BUSY_WAIT
+	uint32_t btmr_ctrl = (MCHP_BTMR_CTRL_ENABLE
+			      | MCHP_BTMR_CTRL_AUTO_RESTART
+			      | MCHP_BTMR_CTRL_COUNT_UP
+			      | (47UL << MCHP_BTMR_CTRL_PRESCALE_POS));
+
+#if CONFIG_SOC_SERIES_MEC15XX
+	mchp_pcr_periph_slp_ctrl(PCR_B32TMR0, 0);
+#else
+	PCR_XEC_REGS->SLP_EN[BTMR32_0_PCR_REG_IDX] &= ~BIT(BTMR32_0_PCR_BITPOS);
+#endif
+	BTMR32_0_REGS->CTRL = MCHP_BTMR_CTRL_SOFT_RESET;
+	BTMR32_0_REGS->CTRL = btmr_ctrl;
+	BTMR32_0_REGS->PRLD = UINT32_MAX;
+	btmr_ctrl |= MCHP_BTMR_CTRL_START;
+
+	timer_restart(cached_icr);
+	/* wait for RTOS timer to load count register from preload */
+	while (TIMER_REGS->CNT == 0) {
+		;
+	}
+
+	BTMR32_0_REGS->CTRL = btmr_ctrl;
+#else
+	timer_restart(cached_icr);
+#endif
+
+	return 0;
+}
+
+SYS_INIT(sys_clock_driver_init, PRE_KERNEL_2,
+	 CONFIG_SYSTEM_CLOCK_INIT_PRIORITY);
